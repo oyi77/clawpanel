@@ -24,7 +24,17 @@ export async function render() {
   const state = { config: null }
   await loadConfig(page, state)
 
-  page.querySelector('#btn-save-models').onclick = () => saveConfig(state)
+  page.querySelector('#btn-save-models').onclick = async () => {
+    const btn = page.querySelector('#btn-save-models')
+    btn.disabled = true
+    btn.textContent = '保存中...'
+    try {
+      await saveConfig(state)
+    } finally {
+      btn.disabled = false
+      btn.textContent = '保存配置'
+    }
+  }
   page.querySelector('#btn-add-provider').onclick = () => addProvider(page, state)
 
   return page

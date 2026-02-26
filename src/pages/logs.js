@@ -12,6 +12,8 @@ const LOG_TABS = [
   { key: 'config-audit', label: '审计日志' },
 ]
 
+let _searchTimer = null
+
 export async function render() {
   const page = document.createElement('div')
   page.className = 'page'
@@ -48,10 +50,9 @@ export async function render() {
   })
 
   // 搜索
-  let searchTimer = null
   page.querySelector('#log-search').addEventListener('input', (e) => {
-    clearTimeout(searchTimer)
-    searchTimer = setTimeout(() => {
+    clearTimeout(_searchTimer)
+    _searchTimer = setTimeout(() => {
       if (e.target.value.trim()) {
         searchLog(page, currentTab, e.target.value.trim())
       } else {
@@ -65,6 +66,11 @@ export async function render() {
 
   loadLog(page, currentTab)
   return page
+}
+
+export function cleanup() {
+  clearTimeout(_searchTimer)
+  _searchTimer = null
 }
 
 async function loadLog(page, logName) {

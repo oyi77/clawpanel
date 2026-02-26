@@ -43,6 +43,8 @@ const ICONS = {
   deploy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>',
 }
 
+let _delegated = false
+
 export function renderSidebar(el) {
   const current = getCurrentRoute()
 
@@ -86,14 +88,22 @@ export function renderSidebar(el) {
 
   el.innerHTML = html
 
-  // 绑定导航点击事件
-  el.querySelectorAll('.nav-item[data-route]').forEach(item => {
-    item.onclick = () => navigate(item.dataset.route)
-  })
-
-  // 主题切换
-  el.querySelector('#btn-theme-toggle')?.addEventListener('click', () => {
-    toggleTheme()
-    renderSidebar(el)
-  })
+  // 事件委托：只绑定一次，避免重复绑定
+  if (!_delegated) {
+    _delegated = true
+    el.addEventListener('click', (e) => {
+      // 导航点击
+      const navItem = e.target.closest('.nav-item[data-route]')
+      if (navItem) {
+        navigate(navItem.dataset.route)
+        return
+      }
+      // 主题切换
+      const themeBtn = e.target.closest('#btn-theme-toggle')
+      if (themeBtn) {
+        toggleTheme()
+        renderSidebar(el)
+      }
+    })
+  }
 }

@@ -5,6 +5,7 @@ const routes = {}
 let _contentEl = null
 let _loadId = 0
 let _currentCleanup = null
+let _initialized = false
 
 export function registerRoute(path, loader) {
   routes[path] = loader
@@ -16,7 +17,10 @@ export function navigate(path) {
 
 export function initRouter(contentEl) {
   _contentEl = contentEl
-  window.addEventListener('hashchange', () => loadRoute())
+  if (!_initialized) {
+    window.addEventListener('hashchange', () => loadRoute())
+    _initialized = true
+  }
   loadRoute()
 }
 

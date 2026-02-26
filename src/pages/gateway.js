@@ -21,7 +21,17 @@ export async function render() {
 
   const state = { config: null }
   await loadConfig(page, state)
-  page.querySelector('#btn-save-gw').onclick = () => saveConfig(page, state)
+  page.querySelector('#btn-save-gw').onclick = async () => {
+    const btn = page.querySelector('#btn-save-gw')
+    btn.disabled = true
+    btn.textContent = '保存中...'
+    try {
+      await saveConfig(page, state)
+    } finally {
+      btn.disabled = false
+      btn.textContent = '保存配置'
+    }
+  }
   return page
 }
 
