@@ -74,19 +74,27 @@ pub fn write_mcp_config(config: Value) -> Result<(), String> {
 }
 
 /// 获取本地安装的 openclaw 版本号
+/// 优先从 npm 包的 package.json 读取（含完整后缀），fallback 到 CLI
 fn get_local_version() -> Option<String> {
-    let output = Command::new("openclaw")
-        .arg("--version")
-        .output()
-        .ok()?;
+    // 通过 symlink 找到包目录，读 package.json 的 version
+    if let Ok(target) = fs::read_link("/opt/homebrew/bin/openclaw") {
+        let pkg_json = PathBuf::from("/opt/homebrew/bin")
+            .join(&target)
+            .parent()?
+            .join("package.json");
+        if let Ok(content) = fs::read_to_string(&pkg_json) {
+            if let Some(ver) = serde_json::from_str::<Value>(&content)
+                .ok()
+                .and_then(|v| v.get("version")?.as_str().map(String::from))
+            {
+                return Some(ver);
+            }
+        }
+    }
+    // fallback: CLI 输出
+    let output = Command::new("openclaw").arg("--version").output().ok()?;
     let raw = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    // 格式可能是 "openclaw 2026.2.23" 或纯版本号
-    let version = raw
-        .split_whitespace()
-        .last()
-        .filter(|s| !s.is_empty())
-        .map(String::from)?;
-    Some(version)
+    raw.split_whitespace().last().filter(|s| !s.is_empty()).map(String::from)
 }
 
 /// 从 npm registry 获取最新版本号，超时 5 秒
