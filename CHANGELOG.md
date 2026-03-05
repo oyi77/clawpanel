@@ -9,6 +9,7 @@
 
 ### 修复 (Bug Fixes)
 
+- **Gateway 首次安装后无法启动** — 安装流程未设置 `mode: "local"`，导致 Gateway 不知道以什么模式运行。现在安装完成后自动写入，仪表盘加载时也会自愈补全
 - **Windows Node.js 检测失败** — `enhanced_path()` 扩展为跨平台，Windows 上自动扫描 Program Files、LOCALAPPDATA、APPDATA、常见盘符（C/D/E/F）下的 Node.js 安装路径
 - **Git SSH 导致安装失败 (exit 128)** — npm 依赖使用 SSH 协议拉取 GitHub 仓库，用户没配 SSH Key 时报 `Permission denied (publickey)`。安装前自动执行 `git config --global url.https://...insteadOf ssh://...` 切换为 HTTPS
 - **npm 安装失败无引导** — 安装/升级 OpenClaw 失败时仅显示"安装失败"，现在自动诊断错误类型（Git SSH 权限 / Git 未安装 / EPERM 文件占用 / MODULE_NOT_FOUND 安装不完整 / ENOENT / 权限不足 / 网络错误 / 缓存损坏）并给出具体修复命令

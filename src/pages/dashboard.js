@@ -76,6 +76,12 @@ async function loadDashboardData(page) {
   if (servicesRes.status === 'rejected') toast('服务状态加载失败', 'error')
   if (versionRes.status === 'rejected') toast('版本信息加载失败', 'error')
 
+  // 自愈：如果 openclaw.json 没有 mode 字段，自动设为 local，否则 Gateway 启动不了
+  if (config && !config.mode) {
+    config.mode = 'local'
+    api.writeOpenclawConfig(config).catch(() => {})
+  }
+
   renderStatCards(page, services, version, [], config, null)
   bindActions(page)
 
