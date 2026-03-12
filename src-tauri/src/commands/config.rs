@@ -30,6 +30,15 @@ impl Drop for GuardianPause {
 /// 预设 npm 源列表
 const DEFAULT_REGISTRY: &str = "https://registry.npmmirror.com";
 
+/// Linux: 检测是否以 root 身份运行（避免 unsafe libc 调用）
+#[cfg(target_os = "linux")]
+fn nix_is_root() -> bool {
+    std::env::var("USER")
+        .or_else(|_| std::env::var("EUID"))
+        .map(|v| v == "root" || v == "0")
+        .unwrap_or(false)
+}
+
 /// 读取用户配置的 npm registry，fallback 到淘宝镜像
 fn get_configured_registry() -> String {
     let path = super::openclaw_dir().join("npm-registry.txt");
@@ -64,7 +73,7 @@ fn npm_command() -> Command {
     #[cfg(target_os = "linux")]
     {
         // Linux 非 root 用户全局 npm install 需要 sudo
-        let need_sudo = unsafe { libc::geteuid() } != 0;
+        let need_sudo = !nix_is_root();
         let mut cmd = if need_sudo {
             let mut c = Command::new("sudo");
             c.args(["npm", "--registry", &registry]);

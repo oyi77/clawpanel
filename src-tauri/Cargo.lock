@@ -334,7 +334,6 @@ dependencies = [
  "chrono",
  "dirs",
  "ed25519-dalek",
- "libc",
  "rand 0.8.5",
  "regex",
  "reqwest 0.12.28",
