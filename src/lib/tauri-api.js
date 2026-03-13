@@ -2,18 +2,11 @@
  * Tauri API 封装层
  * Tauri 环境用 invoke，Web 模式走 dev-api 后端
  */
-import { DOCKER_TASK_TIMEOUT_MS } from './docker-tasking.js'
 
 const isTauri = !!window.__TAURI_INTERNALS__
 
 // 仅在 Node.js 后端实现的命令（Tauri Rust 不处理），强制走 webInvoke
 const WEB_ONLY_CMDS = new Set([
-  'docker_test_endpoint',
-  'docker_info', 'docker_list_containers', 'docker_create_container',
-  'docker_start_container', 'docker_stop_container', 'docker_restart_container',
-  'docker_remove_container', 'docker_rebuild_container', 'docker_container_logs', 'docker_container_exec', 'docker_init_worker', 'docker_gateway_chat', 'docker_agent', 'docker_agent_broadcast', 'docker_dispatch_task', 'docker_dispatch_broadcast', 'docker_task_status', 'docker_task_list', 'docker_pull_image', 'docker_pull_status',
-  'docker_list_images', 'docker_list_nodes', 'docker_add_node', 'docker_remove_node',
-  'docker_cluster_overview',
   'instance_list', 'instance_add', 'instance_remove', 'instance_set_active',
   'instance_health_check', 'instance_health_all',
   'get_deploy_mode',
@@ -270,34 +263,6 @@ export const api = {
   instanceHealthCheck: (id) => invoke('instance_health_check', { id }),
   instanceHealthAll: () => invoke('instance_health_all'),
 
-  // Docker 集群管理
-  getDeployMode: () => cachedInvoke('get_deploy_mode', {}, 60000),
-  dockerClusterOverview: () => invoke('docker_cluster_overview'),
-  dockerTestEndpoint: (endpoint) => invoke('docker_test_endpoint', { endpoint }),
-  dockerInfo: (nodeId) => invoke('docker_info', { nodeId }),
-  dockerListContainers: (nodeId, all = true) => invoke('docker_list_containers', { nodeId, all }),
-  dockerCreateContainer: (opts) => invoke('docker_create_container', opts),
-  dockerStartContainer: (nodeId, containerId) => { invalidate('docker_cluster_overview', 'docker_list_containers'); return invoke('docker_start_container', { nodeId, containerId }) },
-  dockerStopContainer: (nodeId, containerId) => { invalidate('docker_cluster_overview', 'docker_list_containers'); return invoke('docker_stop_container', { nodeId, containerId }) },
-  dockerRestartContainer: (nodeId, containerId) => { invalidate('docker_cluster_overview', 'docker_list_containers'); return invoke('docker_restart_container', { nodeId, containerId }) },
-  dockerRemoveContainer: (nodeId, containerId, force = false) => { invalidate('docker_cluster_overview', 'docker_list_containers'); return invoke('docker_remove_container', { nodeId, containerId, force }) },
-  dockerContainerLogs: (nodeId, containerId, tail = 200) => invoke('docker_container_logs', { nodeId, containerId, tail }),
-  dockerContainerExec: (nodeId, containerId, cmd) => invoke('docker_container_exec', { nodeId, containerId, cmd }),
-  dockerInitWorker: (nodeId, containerId, role) => invoke('docker_init_worker', { nodeId, containerId, role }),
-  dockerGatewayChat: (nodeId, containerId, message, timeout = DOCKER_TASK_TIMEOUT_MS) => invoke('docker_gateway_chat', { nodeId, containerId, message, timeout }),
-  dockerAgent: (nodeId, containerId, cmd) => invoke('docker_agent', { nodeId, containerId, cmd }),
-  dockerAgentBroadcast: (nodeId, containerIds, message, timeout = DOCKER_TASK_TIMEOUT_MS) => invoke('docker_agent_broadcast', { nodeId, containerIds, message, timeout }),
-  dockerDispatchTask: (nodeId, containerId, containerName, message, timeout = DOCKER_TASK_TIMEOUT_MS) => invoke('docker_dispatch_task', { nodeId, containerId, containerName, message, timeout }),
-  dockerDispatchBroadcast: (nodeId, targets, message, timeout = DOCKER_TASK_TIMEOUT_MS) => invoke('docker_dispatch_broadcast', { nodeId, targets, message, timeout }),
-  dockerTaskStatus: (taskId) => invoke('docker_task_status', { taskId }),
-  dockerTaskList: (containerId, status) => invoke('docker_task_list', { containerId, status }),
-  dockerRebuildContainer: (nodeId, containerId, pullLatest = true) => invoke('docker_rebuild_container', { nodeId, containerId, pullLatest }),
-  dockerPullImage: (nodeId, image, tag, requestId) => invoke('docker_pull_image', { nodeId, image, tag, requestId }),
-  dockerPullStatus: (requestId) => invoke('docker_pull_status', { requestId }),
-  dockerListImages: (nodeId) => invoke('docker_list_images', { nodeId }),
-  dockerListNodes: () => cachedInvoke('docker_list_nodes', {}, 30000),
-  dockerAddNode: (name, endpoint) => { invalidate('docker_list_nodes', 'docker_cluster_overview'); return invoke('docker_add_node', { name, endpoint }) },
-  dockerRemoveNode: (nodeId) => { invalidate('docker_list_nodes', 'docker_cluster_overview'); return invoke('docker_remove_node', { nodeId }) },
 
   // 前端热更新
   checkFrontendUpdate: () => invoke('check_frontend_update'),

@@ -12,7 +12,7 @@ import { fileURLToPath } from 'url'
 import net from 'net'
 import http from 'http'
 import crypto from 'crypto'
-import { DOCKER_TASK_TIMEOUT_MS } from '../src/lib/docker-tasking.js'
+const DOCKER_TASK_TIMEOUT_MS = 10 * 60 * 1000
 
 const __dev_dirname = path.dirname(fileURLToPath(import.meta.url))
 const OPENCLAW_DIR = path.join(homedir(), '.openclaw')

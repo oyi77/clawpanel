@@ -5,6 +5,13 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.8.4] - 2026-03-13
+
+### 改进 (Improvements)
+
+- **移除龙虾军团入口** — 精简产品功能，移除 Docker 集群管理页面及相关军事化主题 UI，聚焦"简单好用"的核心体验
+- **前端瘦身** — 删除 3 个专用模块（docker.js / docker-tasking.js / pixel-roles.js），pages.css 减少约 700 行，tauri-api.js 清理 30 个未使用 API 方法
+
 ## [0.8.3] - 2026-03-12
 
 ### 修复 (Fixes)
