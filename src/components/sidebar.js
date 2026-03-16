@@ -42,6 +42,7 @@ const NAV_ITEMS_FULL = [
     section: '扩展',
     items: [
       { route: '/skills', label: 'Skills', icon: 'skills' },
+      { route: '/workflow', label: 'Workflow', icon: 'clock' },
     ]
   },
   {
