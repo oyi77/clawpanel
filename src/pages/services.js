@@ -3,6 +3,7 @@
  * 服务启停 + 更新检测 + 配置备份管理
  */
 import { api } from '../lib/tauri-api.js'
+import { t } from '../lib/i18n.js'
 import { toast } from '../components/toast.js'
 import { showConfirm, showUpgradeModal } from '../components/modal.js'
 import { isMacPlatform, isInDocker, setUpgrading, setUserStopped, resetAutoRestart } from '../lib/app-state.js'
@@ -25,8 +26,8 @@ export async function render() {
 
   page.innerHTML = `
     <div class="page-header">
-      <h1 class="page-title">服务管理</h1>
-      <p class="page-desc">管理 OpenClaw 服务、检查更新、配置备份</p>
+      <h1 class="page-title">${t('Service Management')}</h1>
+      <p class="page-desc">${t('Service Desc')}</p>
     </div>
     <div id="version-bar"><div class="stat-card loading-placeholder" style="height:80px;margin-bottom:var(--space-lg)"></div></div>
     <div id="services-list"><div class="stat-card loading-placeholder" style="height:64px"></div></div>

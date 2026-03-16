@@ -1,5 +1,6 @@
 import { statusIcon } from '../lib/icons.js'
 import { api } from '../lib/tauri-api.js'
+import { t } from '../lib/i18n.js'
 import { toast } from '../components/toast.js'
 
 export async function render() {
@@ -7,10 +8,10 @@ export async function render() {
   page.className = 'page'
   page.innerHTML = `
     <div class="page-header">
-      <h1 class="page-title">Workflow Center</h1>
+      <h1 class="page-title">${t('Workflow')} Center</h1>
       <div class="page-actions">
         <button class="btn btn-primary" id="btn-workflow-sync">
-          ${statusIcon('sync', 14)} Sync Upstream
+          ${statusIcon('sync', 14)} ${t('Sync')} Upstream
         </button>
       </div>
     </div>

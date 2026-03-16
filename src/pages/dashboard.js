@@ -4,6 +4,7 @@
 import { api } from '../lib/tauri-api.js'
 import { toast } from '../components/toast.js'
 import { onGatewayChange } from '../lib/app-state.js'
+import { t } from '../lib/i18n.js'
 import { navigate } from '../router.js'
 
 let _unsubGw = null
@@ -14,8 +15,8 @@ export async function render() {
 
   page.innerHTML = `
     <div class="page-header">
-      <h1 class="page-title">仪表盘</h1>
-      <p class="page-desc">OpenClaw 运行状态概览</p>
+      <h1 class="page-title">${t('Dashboard')}</h1>
+      <p class="page-desc">${t('Status Overview')}</p>
     </div>
     <div class="stat-cards" id="stat-cards">
       <div class="stat-card loading-placeholder"></div>
@@ -27,12 +28,12 @@ export async function render() {
     </div>
     <div id="dashboard-overview-container"></div>
     <div class="quick-actions">
-      <button class="btn btn-secondary" id="btn-restart-gw">重启 Gateway</button>
-      <button class="btn btn-secondary" id="btn-check-update">检查更新</button>
-      <button class="btn btn-secondary" id="btn-create-backup">创建备份</button>
+      <button class="btn btn-secondary" id="btn-restart-gw">${t('Restart Gateway')}</button>
+      <button class="btn btn-secondary" id="btn-check-update">${t('Check Update')}</button>
+      <button class="btn btn-secondary" id="btn-create-backup">${t('Create Backup')}</button>
     </div>
     <div class="config-section">
-      <div class="config-section-title">最近日志</div>
+      <div class="config-section-title">${t('Recent Logs')}</div>
       <div class="log-viewer" id="recent-logs" style="max-height:300px"></div>
     </div>
   `

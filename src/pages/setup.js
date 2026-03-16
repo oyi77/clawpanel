@@ -3,6 +3,7 @@
  * 自动检测环境 → 版本选择 → 一键安装 → 自动跳转
  */
 import { api, invalidate } from '../lib/tauri-api.js'
+import { t } from '../lib/i18n.js'
 import { showUpgradeModal } from '../components/modal.js'
 import { toast } from '../components/toast.js'
 import { setUpgrading, isMacPlatform } from '../lib/app-state.js'
@@ -18,9 +19,9 @@ export async function render() {
       <div style="margin-bottom:var(--space-lg)">
         <img src="/images/logo-brand.png" alt="ClawPanel" style="max-width:160px;width:100%;height:auto">
       </div>
-      <h1 style="font-size:var(--font-size-xl);margin-bottom:var(--space-xs)">欢迎使用 ClawPanel</h1>
+      <h1 style="font-size:var(--font-size-xl);margin-bottom:var(--space-xs)">${t('Welcome to ClawPanel')}</h1>
       <p style="color:var(--text-secondary);margin-bottom:var(--space-xl);line-height:1.6">
-        OpenClaw AI Agent 框架的桌面管理面板
+        ${t('ClawPanel Desc')}
       </p>
 
       <div id="setup-steps"></div>
@@ -28,7 +29,7 @@ export async function render() {
       <div style="margin-top:var(--space-lg)">
         <button class="btn btn-secondary btn-sm" id="btn-recheck" style="min-width:120px">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" style="margin-right:4px"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
-          重新检测
+          ${t('Re-detect')}
         </button>
       </div>
     </div>

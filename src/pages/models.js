@@ -3,6 +3,7 @@
  * 服务商管理 + 模型增删改查 + 主模型选择
  */
 import { api } from '../lib/tauri-api.js'
+import { t } from '../lib/i18n.js'
 import { toast } from '../components/toast.js'
 import { showModal, showConfirm } from '../components/modal.js'
 import { icon, statusIcon } from '../lib/icons.js'
@@ -14,12 +15,12 @@ export async function render() {
 
   page.innerHTML = `
     <div class="page-header">
-      <h1 class="page-title">模型配置</h1>
-      <p class="page-desc">添加 AI 模型服务商，配置可用模型</p>
+      <h1 class="page-title">${t('Model Config')}</h1>
+      <p class="page-desc">${t('Model Config Desc')}</p>
     </div>
     <div class="config-actions">
-      <button class="btn btn-primary btn-sm" id="btn-add-provider">+ 添加服务商</button>
-      <button class="btn btn-secondary btn-sm" id="btn-undo" disabled>↩ 撤销</button>
+      <button class="btn btn-primary btn-sm" id="btn-add-provider">${t('Add Provider')}</button>
+      <button class="btn btn-secondary btn-sm" id="btn-undo" disabled>↩ ${t('Undo')}</button>
     </div>
     <div class="form-hint" style="margin-bottom:var(--space-md)">
       服务商是模型的来源（如 OpenAI、DeepSeek 等）。每个服务商下可添加多个模型。

@@ -3,6 +3,7 @@
  * Agent 增删改查 + 身份编辑
  */
 import { api, invalidate } from '../lib/tauri-api.js'
+import { t } from '../lib/i18n.js'
 import { toast } from '../components/toast.js'
 import { showModal, showConfirm } from '../components/modal.js'
 
@@ -13,11 +14,11 @@ export async function render() {
   page.innerHTML = `
     <div class="page-header">
       <div>
-        <h1 class="page-title">Agent 管理</h1>
-        <p class="page-desc">创建和管理 OpenClaw Agent，配置身份、模型和工作区</p>
+        <h1 class="page-title">${t('Agent Management')}</h1>
+        <p class="page-desc">${t('Agent Desc')}</p>
       </div>
       <div class="page-actions">
-        <button class="btn btn-primary" id="btn-add-agent">+ 新建 Agent</button>
+        <button class="btn btn-primary" id="btn-add-agent">${t('New Agent')}</button>
       </div>
     </div>
     <div class="page-content">

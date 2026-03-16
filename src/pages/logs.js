@@ -2,6 +2,7 @@
  * 日志查看页面
  */
 import { api } from '../lib/tauri-api.js'
+import { t } from '../lib/i18n.js'
 import { toast } from '../components/toast.js'
 
 const LOG_TABS = [
@@ -20,14 +21,14 @@ export async function render() {
 
   page.innerHTML = `
     <div class="page-header">
-      <h1 class="page-title">日志查看</h1>
-      <p class="page-desc">查看 OpenClaw 各服务日志</p>
+      <h1 class="page-title">${t('Log View')}</h1>
+      <p class="page-desc">${t('Log View Desc')}</p>
     </div>
     <div class="tab-bar">
-      ${LOG_TABS.map((t, i) => `<div class="tab${i === 0 ? ' active' : ''}" data-tab="${t.key}">${t.label}</div>`).join('')}
+      ${LOG_TABS.map((t_item, i) => `<div class="tab\${i === 0 ? ' active' : ''}" data-tab="\${t_item.key}">\${t_item.label}</div>`).join('')}
     </div>
     <div class="log-toolbar">
-      <input type="text" class="form-input" id="log-search" placeholder="搜索日志..." style="max-width:300px">
+      <input type="text" class="form-input" id="log-search" placeholder="\${t('Search logs...')}" style="max-width:300px">
       <button class="btn btn-secondary btn-sm" id="btn-refresh">刷新</button>
       <label style="display:flex;align-items:center;gap:6px;font-size:var(--font-size-sm);color:var(--text-secondary)">
         <input type="checkbox" id="log-autoscroll" checked> 自动滚动
