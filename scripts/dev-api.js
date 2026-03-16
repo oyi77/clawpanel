@@ -267,8 +267,9 @@ function getConfiguredNpmRegistry() {
 function pickRegistryForPackage(pkg) {
   const configured = getConfiguredNpmRegistry()
   if (pkg.includes('openclaw-zh')) {
-    if (configured.includes('npmmirror.com') || configured.includes('npmjs.org')) return configured
-    return 'https://registry.npmjs.org'
+    // 汉化版优先用配置的源（通常是 npmmirror.com），不再默认 fallback 到海外 npmjs.org
+    // Docker 容器内网络受限时，海外源会 ETIMEDOUT
+    return configured
   }
   return configured
 }
@@ -2737,23 +2738,53 @@ const handlers = {
     }
   },
 
-  // 运行时状态摘要（60s 服务端缓存，ARM 设备上此调用是最大 CPU 消耗源）
+  // 运行时状态摘要（轻量实现：直接读 openclaw.json + 端口检测，不 spawn CLI 进程）
+  // ARM 设备上 `openclaw status --json` 是最大 CPU 消耗源（每次 spawn ~380M Node.js 进程）
   get_status_summary() {
     return serverCached('status_summary', 60000, () => {
       try {
-        const raw = execSync('openclaw status --json 2>&1', { windowsHide: true, timeout: 10000 }).toString()
-        // 提取第一个 JSON 对象
-        const idx = raw.indexOf('{')
-        if (idx >= 0) {
-          try { return JSON.parse(raw.slice(idx)) } catch {}
-          // 流式解析：找到匹配的 } 结束
-          let depth = 0
-          for (let i = idx; i < raw.length; i++) {
-            if (raw[i] === '{') depth++
-            else if (raw[i] === '}') { depth--; if (depth === 0) { try { return JSON.parse(raw.slice(idx, i + 1)) } catch { break } } }
-          }
+        if (!fs.existsSync(CONFIG_PATH)) return { error: 'openclaw.json 不存在' }
+        const cfg = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'))
+        const channels = cfg.channels || {}
+        const channelSummary = Object.entries(channels).map(([id, val]) =>
+          `${id}: ${val?.enabled !== false ? 'configured' : 'disabled'}`
+        )
+        const agents = cfg.agents?.list || []
+        const defaultModel = cfg.agents?.defaults?.model?.primary || ''
+        const version = (() => {
+          // 尝试读取本地安装的 package.json 获取版本号（不 spawn CLI）
+          try {
+            for (const pkgName of ['@qingchencloud/openclaw-zh', 'openclaw']) {
+              const candidates = isMac
+                ? ['/opt/homebrew/lib/node_modules', '/usr/local/lib/node_modules']
+                : isWindows
+                  ? [path.join(process.env.APPDATA || '', 'npm', 'node_modules')]
+                  : ['/usr/local/lib/node_modules']
+              for (const base of candidates) {
+                const pkgJson = path.join(base, pkgName, 'package.json')
+                if (fs.existsSync(pkgJson)) {
+                  return JSON.parse(fs.readFileSync(pkgJson, 'utf8')).version || null
+                }
+              }
+            }
+          } catch {}
+          return null
+        })()
+        return {
+          runtimeVersion: version,
+          heartbeat: {
+            defaultAgentId: 'main',
+            agents: [
+              { agentId: 'main', enabled: true },
+              ...agents.map(a => ({ agentId: a.id || a, enabled: true }))
+            ]
+          },
+          channelSummary,
+          sessions: {
+            defaults: { model: defaultModel }
+          },
+          source: 'file-read'
         }
-        return { error: '解析失败' }
       } catch (e) {
         return { error: e.message || String(e) }
       }
