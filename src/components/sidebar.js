@@ -4,71 +4,72 @@
 import { navigate, getCurrentRoute, reloadCurrentRoute } from '../router.js'
 import { toggleTheme, getTheme } from '../lib/theme.js'
 import { isOpenclawReady, getActiveInstance, switchInstance, onInstanceChange } from '../lib/app-state.js'
+import { t, getLang, setLang } from '../lib/i18n.js'
 import { api } from '../lib/tauri-api.js'
 import { toast } from './toast.js'
 import { version as APP_VERSION } from '../../package.json'
 
-const NAV_ITEMS_FULL = [
+const NAV_ITEMS_FULL = () => [
   {
-    section: '概览',
+    section: t('Overview'),
     items: [
-      { route: '/dashboard', label: '仪表盘', icon: 'dashboard' },
-      { route: '/assistant', label: '晴辰助手', icon: 'assistant' },
-      { route: '/chat', label: '实时聊天', icon: 'chat' },
-      { route: '/services', label: '服务管理', icon: 'services' },
-      { route: '/logs', label: '日志查看', icon: 'logs' },
+      { route: '/dashboard', label: t('Dashboard'), icon: 'dashboard' },
+      { route: '/assistant', label: t('Assistant'), icon: 'assistant' },
+      { route: '/chat', label: t('Real-time Chat'), icon: 'chat' },
+      { route: '/services', label: t('Services'), icon: 'services' },
+      { route: '/logs', label: t('Logs'), icon: 'logs' },
     ]
   },
   {
-    section: '配置',
+    section: t('Configuration'),
     items: [
-      { route: '/models', label: '模型配置', icon: 'models' },
-      { route: '/agents', label: 'Agent 管理', icon: 'agents' },
-      { route: '/gateway', label: 'Gateway', icon: 'gateway' },
-      { route: '/channels', label: '消息渠道', icon: 'channels' },
-      { route: '/communication', label: '通信与自动化', icon: 'settings' },
-      { route: '/security', label: '安全设置', icon: 'security' },
+      { route: '/models', label: t('Models'), icon: 'models' },
+      { route: '/agents', label: t('Agents'), icon: 'agents' },
+      { route: '/gateway', label: t('Gateway'), icon: 'gateway' },
+      { route: '/channels', label: t('Channels'), icon: 'channels' },
+      { route: '/communication', label: t('Automation'), icon: 'settings' },
+      { route: '/security', label: t('Security'), icon: 'security' },
     ]
   },
   {
-    section: '数据',
+    section: t('Data'),
     items: [
-      { route: '/memory', label: '记忆文件', icon: 'memory' },
-      { route: '/cron', label: '定时任务', icon: 'clock' },
-      { route: '/usage', label: '使用情况', icon: 'bar-chart' },
+      { route: '/memory', label: t('Memory'), icon: 'memory' },
+      { route: '/cron', label: t('Cron'), icon: 'clock' },
+      { route: '/usage', label: t('Usage'), icon: 'bar-chart' },
     ]
   },
   {
-    section: '扩展',
+    section: t('Extension'),
     items: [
-      { route: '/skills', label: 'Skills', icon: 'skills' },
-      { route: '/workflow', label: 'Workflow', icon: 'clock' },
+      { route: '/skills', label: t('Skills'), icon: 'skills' },
+      { route: '/workflow', label: t('Workflow'), icon: 'clock' },
     ]
   },
   {
     section: '',
     items: [
-      { route: '/settings', label: '面板设置', icon: 'settings' },
-      { route: '/chat-debug', label: '系统诊断', icon: 'debug' },
-      { route: '/about', label: '关于', icon: 'about' },
+      { route: '/settings', label: t('Panel Settings'), icon: 'settings' },
+      { route: '/chat-debug', label: t('System Diagnosis'), icon: 'debug' },
+      { route: '/about', label: t('About'), icon: 'about' },
     ]
   }
 ]
 
-const NAV_ITEMS_SETUP = [
+const NAV_ITEMS_SETUP = () => [
   {
     section: '',
     items: [
-      { route: '/setup', label: '初始设置', icon: 'setup' },
-      { route: '/assistant', label: '晴辰助手', icon: 'assistant' },
+      { route: '/setup', label: t('Setup'), icon: 'setup' },
+      { route: '/assistant', label: t('Assistant'), icon: 'assistant' },
     ]
   },
   {
     section: '',
     items: [
-      { route: '/settings', label: '面板设置', icon: 'settings' },
-      { route: '/chat-debug', label: '系统诊断', icon: 'debug' },
-      { route: '/about', label: '关于', icon: 'about' },
+      { route: '/settings', label: t('Panel Settings'), icon: 'settings' },
+      { route: '/chat-debug', label: t('System Diagnosis'), icon: 'debug' },
+      { route: '/about', label: t('About'), icon: 'about' },
     ]
   }
 ]
@@ -135,7 +136,7 @@ export function renderSidebar(el) {
     <nav class="sidebar-nav">
   `
 
-  const navItems = isOpenclawReady() ? NAV_ITEMS_FULL : NAV_ITEMS_SETUP
+  const navItems = isOpenclawReady() ? NAV_ITEMS_FULL() : NAV_ITEMS_SETUP()
 
   for (const section of navItems) {
     html += `<div class="nav-section">
@@ -157,12 +158,20 @@ export function renderSidebar(el) {
   const isDark = getTheme() === 'dark'
   const sunIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>'
   const moonIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>'
+  const langIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>'
+
+  const curLang = getLang()
 
   html += `
     <div class="sidebar-footer">
-      <div class="nav-item" id="btn-theme-toggle">
-        ${isDark ? sunIcon : moonIcon}
-        <span>${isDark ? '日间模式' : '夜间模式'}</span>
+      <div class="nav-item-row" style="display:flex;gap:8px;padding:4px 12px">
+        <div class="nav-item" id="btn-theme-toggle" style="flex:1;padding:8px;justify-content:center" title="${t('Theme Mode')}">
+          ${isDark ? sunIcon : moonIcon}
+        </div>
+        <div class="nav-item" id="btn-lang-cycle" style="flex:1;padding:8px;justify-content:center;font-size:11px;font-weight:bold" title="Switch Language">
+           ${langIcon}
+           <span style="margin-left:6px">${curLang.toUpperCase()}</span>
+        </div>
       </div>
       <div class="sidebar-meta">
         <a href="https://claw.qt.cool" target="_blank" rel="noopener" class="sidebar-link">claw.qt.cool</a>
@@ -197,6 +206,14 @@ export function renderSidebar(el) {
       if (themeBtn) {
         toggleTheme()
         renderSidebar(el)
+        return
+      }
+      // 语言切换 (Cycle)
+      const langBtn = e.target.closest('#btn-lang-cycle')
+      if (langBtn) {
+        const langs = ['en', 'id', 'zh', 'ru']
+        const next = langs[(langs.indexOf(getLang()) + 1) % langs.length]
+        setLang(next)
         return
       }
       // 实例切换器
