@@ -9,23 +9,38 @@ import {
   SquarePen,
   Network,
   Settings,
+  Languages,
+  RefreshCcw,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import { SidebarSection } from "./SidebarSection";
 import { SidebarNavItem } from "./SidebarNavItem";
 import { SidebarProjects } from "./SidebarProjects";
 import { SidebarAgents } from "./SidebarAgents";
 import { useDialog } from "../context/DialogContext";
 import { useCompany } from "../context/CompanyContext";
+import { useLocation } from "@/lib/router";
 import { heartbeatsApi } from "../api/heartbeats";
 import { queryKeys } from "../lib/queryKeys";
 import { useInboxBadge } from "../hooks/useInboxBadge";
 import { Button } from "@/components/ui/button";
 
 export function Sidebar() {
+  const { t, i18n } = useTranslation();
+  const location_obj = useLocation();
   const { openNewIssue } = useDialog();
   const { selectedCompanyId, selectedCompany } = useCompany();
   const inboxBadge = useInboxBadge(selectedCompanyId);
+
+  const changeLanguage = (lng: string) => {
+    i18n.changeLanguage(lng);
+  };
+
+  const handleSync = () => {
+    // Sync triggered - can add notification here
+  };
+
   const { data: liveRuns } = useQuery({
     queryKey: queryKeys.liveRuns(selectedCompanyId!),
     queryFn: () => heartbeatsApi.liveRunsForCompany(selectedCompanyId!),
@@ -69,12 +84,12 @@ export function Sidebar() {
             className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-colors"
           >
             <SquarePen className="h-4 w-4 shrink-0" />
-            <span className="truncate">New Issue</span>
+            <span className="truncate">{t("New Issue")}</span>
           </button>
-          <SidebarNavItem to="/dashboard" label="Dashboard" icon={LayoutDashboard} liveCount={liveRunCount} />
+          <SidebarNavItem to="/dashboard" label={t("Dashboard")} icon={LayoutDashboard} liveCount={liveRunCount} />
           <SidebarNavItem
             to="/inbox"
-            label="Inbox"
+            label={t("Inbox")}
             icon={Inbox}
             badge={inboxBadge.inbox}
             badgeTone={inboxBadge.failedRuns > 0 ? "danger" : "default"}
@@ -82,21 +97,47 @@ export function Sidebar() {
           />
         </div>
 
-        <SidebarSection label="Work">
-          <SidebarNavItem to="/issues" label="Issues" icon={CircleDot} />
-          <SidebarNavItem to="/goals" label="Goals" icon={Target} />
+        <SidebarSection label={t("Work")}>
+          <SidebarNavItem to="/issues" label={t("Issues")} icon={CircleDot} />
+          <SidebarNavItem to="/goals" label={t("Goals")} icon={Target} />
         </SidebarSection>
 
         <SidebarProjects />
 
         <SidebarAgents />
 
-        <SidebarSection label="Company">
-          <SidebarNavItem to="/org" label="Org" icon={Network} />
-          <SidebarNavItem to="/costs" label="Costs" icon={DollarSign} />
-          <SidebarNavItem to="/activity" label="Activity" icon={History} />
-          <SidebarNavItem to="/company/settings" label="Settings" icon={Settings} />
+        <SidebarSection label={t("Company")}>
+          <SidebarNavItem to="/org" label={t("Org")} icon={Network} />
+          <SidebarNavItem to="/costs" label={t("Costs")} icon={DollarSign} />
+          <SidebarNavItem to="/activity" label={t("Activity")} icon={History} />
+          <SidebarNavItem to="/workflow" label={t("Workflow Center")} icon={RefreshCcw} />
+          <SidebarNavItem to="/company/settings" label={t("Settings")} icon={Settings} />
         </SidebarSection>
+
+        {/* Modular Workflow & Update */}
+        <div className="mt-auto flex flex-col gap-1 border-t border-border pt-4 px-1">
+          <button
+            onClick={handleSync}
+            className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-colors w-full"
+          >
+            <RefreshCcw className="h-4 w-4 shrink-0" />
+            <span className="truncate">{t("Update")} / {t("Sync")}</span>
+          </button>
+
+          <div className="flex items-center gap-2 px-3 py-2 text-[11px] text-muted-foreground">
+            <Languages className="h-3.5 w-3.5" />
+            <select
+              onChange={(e) => changeLanguage(e.target.value)}
+              value={i18n.language}
+              className="bg-transparent border-none outline-none cursor-pointer hover:text-foreground transition-colors uppercase font-bold"
+            >
+              <option value="en">EN</option>
+              <option value="id">ID</option>
+              <option value="zh">CN</option>
+              <option value="ru">RU</option>
+            </select>
+          </div>
+        </div>
       </nav>
     </aside>
   );
