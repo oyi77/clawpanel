@@ -7,6 +7,10 @@
 </p>
 
 <p align="center">
+  <strong>🇨🇳 中文</strong> | <a href="README.en.md">🇺🇸 English</a>
+</p>
+
+<p align="center">
   <a href="https://github.com/qingchencloud/clawpanel/releases/latest">
     <img src="https://img.shields.io/github/v/release/qingchencloud/clawpanel?style=flat-square&color=6366f1" alt="Release">
   </a>
@@ -14,7 +18,7 @@
     <img src="https://img.shields.io/github/downloads/qingchencloud/clawpanel/total?style=flat-square&color=8b5cf6" alt="Downloads">
   </a>
   <a href="https://github.com/qingchencloud/clawpanel/blob/main/LICENSE">
-    <img src="https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square" alt="License">
+    <img src="https://img.shields.io/badge/license-AGPL--3.0-blue.svg?style=flat-square" alt="License">
   </a>
   <a href="https://github.com/qingchencloud/clawpanel/actions/workflows/ci.yml">
     <img src="https://img.shields.io/github/actions/workflow/status/qingchencloud/clawpanel/ci.yml?style=flat-square&label=CI" alt="CI">
@@ -36,6 +40,16 @@
 ClawPanel 是 [OpenClaw](https://github.com/1186258278/OpenClawChineseTranslation) AI Agent 框架的可视化管理面板。**内置智能 AI 助手**，帮你一键安装 OpenClaw、自动诊断配置、排查问题、修复错误。8 大工具 + 4 种模式 + 交互式问答，从新手到老手都能轻松管理。
 
 > 🌐 **官网**: [claw.qt.cool](https://claw.qt.cool/)  |  📦 **下载**: [GitHub Releases](https://github.com/qingchencloud/clawpanel/releases/latest)
+
+### ⚡ OpenClaw 独立安装包（零依赖，无需 Node.js/npm）
+
+不想折腾 Node.js 环境？直接下载 [OpenClaw 独立安装包](https://github.com/qingchencloud/openclaw-standalone/releases/latest)，**内置运行时，解压即用**：
+
+- **Windows**: 下载 `.exe` 安装向导，双击即装
+- **macOS / Linux / 树莓派**: `curl -fsSL https://dl.qrj.ai/openclaw/install.sh | bash`
+- **全平台**: [GitHub Releases](https://github.com/qingchencloud/openclaw-standalone/releases/latest)
+
+> ClawPanel 安装 OpenClaw 时会**自动优先使用独立安装包**，无需手动操作。此方案仅供不使用 ClawPanel 的用户独立安装。
 
 ### 🔥 开发板 / 嵌入式设备支持
 
@@ -723,4 +737,6 @@ sudo systemctl restart clawpanel  # 或 pm2 restart clawpanel
 
 ## 许可证
 
-[MIT License](LICENSE)
+本项目采用 [AGPL-3.0](LICENSE) 开源协议。企业如需闭源商用，可联系获取商业授权。
+
+© 2026 武汉晴辰天下网络科技有限公司 | [claw.qt.cool](https://claw.qt.cool)

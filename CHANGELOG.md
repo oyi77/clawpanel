@@ -5,6 +5,69 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.9.5] - 2026-03-17
+
+### 修复 (Fixes)
+
+- **仪表盘加载卡住** — 从其他页面返回仪表盘时不再永远显示加载占位符，添加错误捕获和重试按钮 (#96)
+- **Gemini 模型配置崩溃** — Google Gemini 的 api 类型从错误的 `google-gemini` 修正为 `google-generative-ai`，与上游 OpenClaw 配置规范一致 (#93)
+- **聊天代码下划线消失** — Markdown 渲染器的下划线转斜体正则改为 word-boundary 匹配，`my_variable` 等标识符不再被误转 (#92)
+- **聊天发送前校验** — Gateway 未就绪时点击发送按钮会提示警告，而非静默失败
+- **聊天页空值防御** — `createStreamBubble`、`renderAttachments`、`showPageGuide`、`loadHistory` 等 8 处空值检查，防止快速切页时报错
+- **WebSocket 重复连接** — 添加 `_connecting` 状态标记和 `connect()` 防重入守卫，避免重复发起连接
+
+### 新功能 (Features)
+
+- **工具调用渲染** — 聊天消息中的 AI 工具调用（tool call）以可折叠卡片形式展示，包含工具名、状态、时间、参数和结果详情
+- **自动滚动控制** — 用户向上滚动查看历史消息时，新回复不再强制跳到底部；点击 ↓ 按钮恢复自动跟随
+
+### 改进 (Improvements)
+
+- **WebSocket 全局单例** — `wsClient` 改为 `window` 级单例，防止热更新时创建重复实例
+- **Docker 部署文档** — 新增 FAQ：面板内安装 OpenClaw 失败的原因和解决方案（推荐一体镜像或 Dockerfile 预装）
+
+### 安全 (Security)
+
+- **quinn-proto 漏洞修复** — 更新 quinn-proto 0.11.13 → 0.11.14，修复 QUIC transport parameter 解析 panic (GHSA-6xvm-j4wr-6v98)
+
+## [0.9.4] - 2026-03-17
+
+### 新功能 (Features)
+
+- **OpenClaw 独立安装包** — 全新 standalone 安装方式，自带 Node.js 运行时，零依赖、无需 npm，下载即用。支持 Windows/macOS/Linux/树莓派
+- **安装方式选择器** — 初始设置页新增安装方式下拉：自动选择（推荐）/ CDN 加速 / GitHub / npm 编译，汉化版专属
+- **GitHub 下载模式** — 支持从 GitHub Releases 下载独立安装包，CDN 不可用时的备选方案
+- **动态版本查询** — 安装时动态查询 latest.json 获取最新版本，不怕旧资源被删除
+
+### 改进 (Improvements)
+
+- **默认汉化版** — 未安装状态默认识别为汉化优化版（而非官方版），更符合国内用户习惯
+- **CherryStudio 干扰过滤** — CLI 检测过滤第三方 openclaw 二进制（如 CherryStudio），避免误识别
+- **安装日志安全** — 日志不再暴露 R2 完整下载地址，防止被恶意利用
+- **卸载兼容增强** — 卸载同时清理 standalone 安装目录和 npm 全局安装，覆盖所有可能路径
+- **macOS 免 sudo** — standalone 安装到用户目录（~/.openclaw-bin），解决 macOS npm 全局安装权限不足问题
+- **官网独立安装包入口** — README 和 docs/index.html 下载区新增独立安装包说明和下载按钮
+
+## [0.9.3] - 2026-03-16
+
+### 修复 (Fixes)
+
+- **仪表盘版本显示"未知"** — 修复 coreP Promise 解构顺序错误（config 和 version 互换），导致版本卡片无法正确读取版本信息
+- **Agent 管理"暂无 Agent"** — OpenClaw 的 main agent 是隐式的（不在 agents.list 中），list_agents 现在始终自动插入 main agent
+- **Agent 模型显示 [object Object]** — 正确解析 model 对象的 primary 字段，兼容字符串和对象两种格式
+- **定时任务触发/编辑/删除失败** — cron.run/update/remove RPC 参数从 id 修正为 jobId，匹配 Gateway schema
+- **聊天会话列表消失** — 恢复 chat header 中的 sidebar toggle 按钮（PR#88 将按钮移入 sidebar 内导致折叠后无法展开）
+- **Gateway 启动失败 Unknown config keys** — stripUiFields 现在清理根层级的 ClawPanel 内部字段（version info），防止污染 openclaw.json
+- **Docker 安装超时** — npm 镜像源不再 fallback 到海外 registry.npmjs.org，优先使用国内 npmmirror
+- **SkillHub CLI 检测误报"请先安装"** — 检测参数从 --version 修正为 --cli-version
+- **消息渠道配置被仪表盘覆盖** — 仪表盘自愈逻辑用缓存 config 覆盖文件导致 channels 丢失，现在先读取最新配置再 patch
+
+### 改进 (Improvements)
+
+- **ARM 设备性能优化** — in-flight 请求去重防止进程堆积、后端 serverCached 缓存、Gateway 轮询降频（15s→30s）、get_status_summary 改为直接读文件不走 CLI
+- **R2 CDN 安装加速** — 新增 Cloudflare R2 预装归档下载（dl.qrj.ai），Windows 安装从 3-10 分钟降至 1-2 分钟
+- **模型添加体验优化** — 快捷添加改为模型选择弹窗，用户可自主勾选需要的模型
+
 ## [0.9.2] - 2026-03-16
 
 ### 新功能 (Features)

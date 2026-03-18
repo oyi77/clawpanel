@@ -59,12 +59,18 @@ let _sessionKey = null, _page = null, _messagesEl = null, _textarea = null
 let _sendBtn = null, _statusDot = null, _typingEl = null, _scrollBtn = null
 let _sessionListEl = null, _cmdPanelEl = null, _attachPreviewEl = null, _fileInputEl = null
 let _modelSelectEl = null
-let _currentAiBubble = null, _currentAiText = '', _currentAiImages = [], _currentAiVideos = [], _currentAiAudios = [], _currentAiFiles = [], _currentRunId = null
+let _currentAiBubble = null, _currentAiText = '', _currentAiImages = [], _currentAiVideos = [], _currentAiAudios = [], _currentAiFiles = [], _currentAiTools = [], _currentRunId = null
 let _isStreaming = false, _isSending = false, _messageQueue = [], _streamStartTime = 0
 let _lastRenderTime = 0, _renderPending = false, _lastHistoryHash = ''
+let _autoScrollEnabled = true, _lastScrollTop = 0, _touchStartY = 0
+let _isLoadingHistory = false
 let _streamSafetyTimer = null, _unsubEvent = null, _unsubReady = null, _unsubStatus = null
 let _seenRunIds = new Set()
 let _pageActive = false
+const _toolEventTimes = new Map()
+const _toolEventData = new Map()
+const _toolRunIndex = new Map()
+const _toolEventSeen = new Set()
 let _errorTimer = null, _lastErrorMsg = null
 let _attachments = []
 let _hasEverConnected = false
@@ -83,16 +89,21 @@ export async function render() {
     <div class="chat-sidebar" id="chat-sidebar">
       <div class="chat-sidebar-header">
         <span>会话列表</span>
-        <button class="chat-sidebar-btn" id="btn-new-session" title="新建会话">
+        <div class="chat-sidebar-header-actions">
+          <button class="chat-sidebar-btn" id="btn-toggle-sidebar" title="会话列表">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+          </button>
+          <button class="chat-sidebar-btn" id="btn-new-session" title="新建会话">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         </button>
+        </div>
       </div>
       <div class="chat-session-list" id="chat-session-list"></div>
     </div>
     <div class="chat-main">
       <div class="chat-header">
         <div class="chat-status">
-          <button class="chat-toggle-sidebar" id="btn-toggle-sidebar" title="会话列表">
+          <button class="chat-toggle-sidebar" id="btn-toggle-sidebar-main" title="会话列表">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
           </button>
           <span class="status-dot" id="chat-status-dot"></span>
@@ -182,6 +193,7 @@ const GUIDE_KEY = 'clawpanel-guide-chat-dismissed'
 
 function showPageGuide(container) {
   if (localStorage.getItem(GUIDE_KEY)) return
+  if (!container || container.querySelector('.chat-page-guide')) return
   const guide = document.createElement('div')
   guide.className = 'chat-page-guide'
   guide.innerHTML = `
@@ -235,13 +247,15 @@ function bindEvents(page) {
     else sendMessage()
   })
 
-  page.querySelector('#btn-toggle-sidebar').addEventListener('click', () => {
+  const toggleSidebar = () => {
     const sidebar = page.querySelector('#chat-sidebar')
     if (!sidebar) return
     const nextOpen = !sidebar.classList.contains('open')
     sidebar.classList.toggle('open', nextOpen)
     setSidebarOpen(nextOpen)
-  })
+  }
+  page.querySelector('#btn-toggle-sidebar')?.addEventListener('click', toggleSidebar)
+  page.querySelector('#btn-toggle-sidebar-main')?.addEventListener('click', toggleSidebar)
   page.querySelector('#btn-new-session').addEventListener('click', () => showNewSessionDialog())
   page.querySelector('#btn-cmd').addEventListener('click', () => toggleCmdPanel())
   page.querySelector('#btn-reset-session').addEventListener('click', () => resetCurrentSession())
@@ -256,8 +270,24 @@ function bindEvents(page) {
   _messagesEl.addEventListener('scroll', () => {
     const { scrollTop, scrollHeight, clientHeight } = _messagesEl
     _scrollBtn.style.display = (scrollHeight - scrollTop - clientHeight < 80) ? 'none' : 'flex'
+    if (scrollTop < _lastScrollTop - 2) _autoScrollEnabled = false
+    if (isAtBottom()) _autoScrollEnabled = true
+    _lastScrollTop = scrollTop
   })
-  _scrollBtn.addEventListener('click', () => scrollToBottom())
+  _messagesEl.addEventListener('wheel', (e) => {
+    if (e.deltaY < 0) _autoScrollEnabled = false
+  }, { passive: true })
+  _messagesEl.addEventListener('touchstart', (e) => {
+    _touchStartY = e.touches?.[0]?.clientY || 0
+  }, { passive: true })
+  _messagesEl.addEventListener('touchmove', (e) => {
+    const y = e.touches?.[0]?.clientY || 0
+    if (y > _touchStartY + 2) _autoScrollEnabled = false
+  }, { passive: true })
+  _scrollBtn.addEventListener('click', () => {
+    _autoScrollEnabled = true
+    scrollToBottom(true)
+  })
   _messagesEl.addEventListener('click', () => hideCmdPanel())
 }
 
@@ -465,6 +495,7 @@ function fileToBase64(file) {
 }
 
 function renderAttachments() {
+  if (!_attachPreviewEl) return
   if (!_attachments.length) {
     _attachPreviewEl.style.display = 'none'
     return
@@ -568,7 +599,7 @@ async function connectGateway() {
     }
 
     // 如果正在连接中（重连等），等待 onReady 回调即可
-    if (wsClient.connected) return
+    if (wsClient.connected || wsClient.connecting || wsClient.gatewayReady) return
 
     // 未连接，发起新连接
     const config = await api.readOpenclawConfig()
@@ -846,6 +877,10 @@ function toggleCmdPanel() {
 function sendMessage() {
   const text = _textarea.value.trim()
   if (!text && !_attachments.length) return
+  if (!wsClient.gatewayReady || !_sessionKey) {
+    toast('Gateway 未就绪，连接成功后再发送', 'warning')
+    return
+  }
   hideCmdPanel()
   _textarea.value = ''
   _textarea.style.height = 'auto'
@@ -858,6 +893,10 @@ function sendMessage() {
 }
 
 async function doSend(text, attachments = []) {
+  if (!wsClient.gatewayReady || !_sessionKey) {
+    toast('Gateway 未就绪，连接成功后再发送', 'warning')
+    return
+  }
   appendUserMessage(text, attachments)
   saveMessage({
     id: uuid(), sessionKey: _sessionKey, role: 'user', content: text, timestamp: Date.now(),
@@ -892,6 +931,26 @@ function stopGeneration() {
 function handleEvent(msg) {
   const { event, payload } = msg
   if (!payload) return
+
+  if (event === 'agent' && payload?.stream === 'tool' && payload?.data?.toolCallId) {
+    const ts = payload.ts
+    const toolCallId = payload.data.toolCallId
+    const runKey = `${payload.runId}:${toolCallId}`
+    if (_toolEventSeen.has(runKey)) return
+    _toolEventSeen.add(runKey)
+    if (ts) _toolEventTimes.set(toolCallId, ts)
+    const current = _toolEventData.get(toolCallId) || {}
+    if (payload.data?.args && current.input == null) current.input = payload.data.args
+    if (payload.data?.meta && current.output == null) current.output = payload.data.meta
+    if (typeof payload.data?.isError === 'boolean' && current.status == null) current.status = payload.data.isError ? 'error' : 'ok'
+    if (current.time == null) current.time = ts || null
+    _toolEventData.set(toolCallId, current)
+    if (payload.runId) {
+      const list = _toolRunIndex.get(payload.runId) || []
+      if (!list.includes(toolCallId)) list.push(toolCallId)
+      _toolRunIndex.set(payload.runId, list)
+    }
+  }
 
   if (event === 'chat') handleChatEvent(payload)
 
@@ -929,6 +988,7 @@ function handleChatEvent(payload) {
     if (c?.videos?.length) _currentAiVideos = c.videos
     if (c?.audios?.length) _currentAiAudios = c.audios
     if (c?.files?.length) _currentAiFiles = c.files
+    if (c?.tools?.length) _currentAiTools = c.tools
     if (c?.text && c.text.length > _currentAiText.length) {
       showTyping(false)
       if (!_currentAiBubble) {
@@ -964,11 +1024,17 @@ function handleChatEvent(payload) {
     const finalVideos = c?.videos || []
     const finalAudios = c?.audios || []
     const finalFiles = c?.files || []
+    let finalTools = c?.tools || []
+    if (!finalTools.length && runId) {
+      const ids = _toolRunIndex.get(runId) || []
+      finalTools = ids.map(id => mergeToolEventData({ id, name: '工具' })).filter(Boolean)
+    }
     if (finalImages.length) _currentAiImages = finalImages
     if (finalVideos.length) _currentAiVideos = finalVideos
     if (finalAudios.length) _currentAiAudios = finalAudios
     if (finalFiles.length) _currentAiFiles = finalFiles
-    const hasContent = finalText || _currentAiImages.length || _currentAiVideos.length || _currentAiAudios.length || _currentAiFiles.length
+    if (finalTools.length) _currentAiTools = finalTools
+    const hasContent = finalText || _currentAiImages.length || _currentAiVideos.length || _currentAiAudios.length || _currentAiFiles.length || _currentAiTools.length
     // 忽略空 final（Gateway 会为一条消息触发多个 run，部分是空 final）
     if (!_currentAiBubble && !hasContent) return
     // 标记 runId 为已处理，防止重复
@@ -991,6 +1057,7 @@ function handleChatEvent(payload) {
       appendVideosToEl(_currentAiBubble, _currentAiVideos)
       appendAudiosToEl(_currentAiBubble, _currentAiAudios)
       appendFilesToEl(_currentAiBubble, _currentAiFiles)
+      appendToolsToEl(_currentAiBubble, finalTools.length ? finalTools : _currentAiTools)
     }
     // 添加时间戳 + 耗时 + token 消耗
     const wrapper = _currentAiBubble?.parentElement
@@ -1085,8 +1152,24 @@ function handleChatEvent(payload) {
 /** 从 Gateway message 对象提取文本和所有媒体（参照 clawapp extractContent） */
 function extractChatContent(message) {
   if (!message || typeof message !== 'object') return null
+  const tools = []
+  collectToolsFromMessage(message, tools)
+  if (message.role === 'tool' || message.role === 'toolResult') {
+    const output = typeof message.content === 'string' ? message.content : null
+    if (!tools.length) {
+      tools.push({
+        name: message.name || message.tool || message.tool_name || '工具',
+        input: message.input || message.args || message.parameters || null,
+        output: output || message.output || message.result || null,
+        status: message.status || 'ok',
+      })
+    } else if (output && !tools[0].output) {
+      tools[0].output = output
+    }
+    return { text: '', images: [], videos: [], audios: [], files: [], tools }
+  }
   const content = message.content
-  if (typeof content === 'string') return { text: stripThinkingTags(content), images: [], videos: [], audios: [], files: [] }
+  if (typeof content === 'string') return { text: stripThinkingTags(content), images: [], videos: [], audios: [], files: [], tools }
   if (Array.isArray(content)) {
     const texts = [], images = [], videos = [], audios = [], files = []
     for (const block of content) {
@@ -1108,6 +1191,34 @@ function extractChatContent(message) {
       else if (block.type === 'file' || block.type === 'document') {
         files.push({ url: block.url || '', name: block.fileName || block.name || '文件', mimeType: block.mimeType || '', size: block.size, data: block.data })
       }
+      else if (block.type === 'tool' || block.type === 'tool_use' || block.type === 'tool_call' || block.type === 'toolCall') {
+        const callId = block.id || block.tool_call_id || block.toolCallId
+        upsertTool(tools, {
+          id: callId,
+          name: block.name || block.tool || block.tool_name || block.toolName || '工具',
+          input: block.input || block.args || block.parameters || block.arguments || null,
+          output: null,
+          status: block.status || 'ok',
+          time: resolveToolTime(callId, message.timestamp),
+        })
+      }
+      else if (block.type === 'tool_result' || block.type === 'toolResult') {
+        const resId = block.id || block.tool_call_id || block.toolCallId
+        upsertTool(tools, {
+          id: resId,
+          name: block.name || block.tool || block.tool_name || block.toolName || '工具',
+          input: block.input || block.args || null,
+          output: block.output || block.result || block.content || null,
+          status: block.status || 'ok',
+          time: resolveToolTime(resId, message.timestamp),
+        })
+      }
+    }
+    if (tools.length) {
+      tools.forEach(t => {
+        if (typeof t.input === 'string') t.input = stripAnsi(t.input)
+        if (typeof t.output === 'string') t.output = stripAnsi(t.output)
+      })
     }
     // 从 mediaUrl/mediaUrls 提取
     const mediaUrls = message.mediaUrls || (message.mediaUrl ? [message.mediaUrl] : [])
@@ -1119,18 +1230,75 @@ function extractChatContent(message) {
       else files.push({ url, name: url.split('/').pop().split('?')[0] || '文件', mimeType: '' })
     }
     const text = texts.length ? stripThinkingTags(texts.join('\n')) : ''
-    return { text, images, videos, audios, files }
+    return { text, images, videos, audios, files, tools }
   }
-  if (typeof message.text === 'string') return { text: stripThinkingTags(message.text), images: [], videos: [], audios: [], files: [] }
+  if (typeof message.text === 'string') return { text: stripThinkingTags(message.text), images: [], videos: [], audios: [], files: [], tools: [] }
   return null
 }
 
+function stripAnsi(text) {
+  if (!text) return ''
+  return text.replace(/\u001b\[[0-9;]*[A-Za-z]/g, '')
+}
+
+function escapeHtml(text) {
+  return (text || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;')
+}
+
 function stripThinkingTags(text) {
-  return text
+  const safe = stripAnsi(text)
+  return safe
     .replace(/<\s*think(?:ing)?\s*>[\s\S]*?<\s*\/\s*think(?:ing)?\s*>/gi, '')
     .replace(/Conversation info \(untrusted metadata\):\s*```json[\s\S]*?```\s*/gi, '')
     .replace(/\[Queued messages while agent was busy\]\s*---\s*Queued #\d+\s*/gi, '')
     .trim()
+}
+
+function normalizeTime(raw) {
+  if (!raw) return null
+  if (raw instanceof Date) return raw.getTime()
+  if (typeof raw === 'string') {
+    const num = Number(raw)
+    if (!Number.isNaN(num)) raw = num
+    else {
+      const parsed = Date.parse(raw)
+      return Number.isNaN(parsed) ? null : parsed
+    }
+  }
+  if (typeof raw === 'number' && raw < 1e12) return raw * 1000
+  return raw
+}
+
+function resolveToolTime(toolId, messageTimestamp) {
+  const eventTs = toolId ? _toolEventTimes.get(toolId) : null
+  return normalizeTime(eventTs) || normalizeTime(messageTimestamp) || null
+}
+
+function getToolTime(tool) {
+  const raw = tool?.end_time || tool?.endTime || tool?.timestamp || tool?.time || tool?.started_at || tool?.startedAt || null
+  return normalizeTime(raw)
+}
+
+function safeStringify(value) {
+  if (value == null) return ''
+  const seen = new WeakSet()
+  try {
+    return JSON.stringify(value, (key, val) => {
+      if (typeof val === 'bigint') return val.toString()
+      if (typeof val === 'object' && val !== null) {
+        if (seen.has(val)) return '[Circular]'
+        seen.add(val)
+      }
+      return val
+    }, 2)
+  } catch {
+    try { return String(value) } catch { return '' }
+  }
 }
 
 function formatTime(date) {
@@ -1153,6 +1321,7 @@ function formatFileSize(bytes) {
 
 /** 创建流式 AI 气泡 */
 function createStreamBubble() {
+  if (!_messagesEl || !_typingEl) return null
   showTyping(false)
   const wrap = document.createElement('div')
   wrap.className = 'msg msg-ai'
@@ -1190,12 +1359,13 @@ function doRender() {
 
 function resetStreamState() {
   clearTimeout(_streamSafetyTimer)
-  if (_currentAiBubble && (_currentAiText || _currentAiImages.length || _currentAiVideos.length || _currentAiAudios.length || _currentAiFiles.length)) {
+  if (_currentAiBubble && (_currentAiText || _currentAiImages.length || _currentAiVideos.length || _currentAiAudios.length || _currentAiFiles.length || _currentAiTools.length)) {
     _currentAiBubble.innerHTML = renderMarkdown(_currentAiText)
     appendImagesToEl(_currentAiBubble, _currentAiImages)
     appendVideosToEl(_currentAiBubble, _currentAiVideos)
     appendAudiosToEl(_currentAiBubble, _currentAiAudios)
     appendFilesToEl(_currentAiBubble, _currentAiFiles)
+    appendToolsToEl(_currentAiBubble, _currentAiTools)
   }
   _renderPending = false
   _lastRenderTime = 0
@@ -1205,6 +1375,7 @@ function resetStreamState() {
   _currentAiVideos = []
   _currentAiAudios = []
   _currentAiFiles = []
+  _currentAiTools = []
   _currentRunId = null
   _isStreaming = false
   _streamStartTime = 0
@@ -1217,8 +1388,9 @@ function resetStreamState() {
 // ── 历史消息加载 ──
 
 async function loadHistory() {
-  if (!_sessionKey) return
-  const hasExisting = _messagesEl?.querySelector('.msg')
+  if (!_sessionKey || !_messagesEl) return
+  _isLoadingHistory = true
+  const hasExisting = _messagesEl.querySelector('.msg')
   if (!hasExisting && isStorageAvailable()) {
     const local = await getLocalMessages(_sessionKey, 200)
     if (local.length) {
@@ -1229,17 +1401,17 @@ async function loadHistory() {
         if (msg.role === 'user') appendUserMessage(msg.content || '', msg.attachments || null, msgTime)
         else if (msg.role === 'assistant') {
           const images = (msg.attachments || []).filter(a => a.category === 'image').map(a => ({ mediaType: a.mimeType, data: a.content, url: a.url }))
-          appendAiMessage(msg.content || '', msgTime, images)
+          appendAiMessage(msg.content || '', msgTime, images, [], [], [], [])
         }
       })
       scrollToBottom()
     }
   }
-  if (!wsClient.gatewayReady) return
+  if (!wsClient.gatewayReady) { _isLoadingHistory = false; return }
   try {
     const result = await wsClient.chatHistory(_sessionKey, 200)
     if (!result?.messages?.length) {
-      if (!_messagesEl.querySelector('.msg')) appendSystemMessage('还没有消息，开始聊天吧')
+      if (_messagesEl && !_messagesEl.querySelector('.msg')) appendSystemMessage('还没有消息，开始聊天吧')
       return
     }
     const deduped = dedupeHistory(result.messages)
@@ -1251,15 +1423,17 @@ async function loadHistory() {
     if (hasExisting && (_isSending || _isStreaming || _messageQueue.length > 0)) {
       saveMessages(result.messages.map(m => {
         const c = extractContent(m)
-        return { id: m.id || uuid(), sessionKey: _sessionKey, role: m.role, content: c?.text || '', timestamp: m.timestamp || Date.now() }
+        const role = (m.role === 'tool' || m.role === 'toolResult') ? 'assistant' : m.role
+        return { id: m.id || uuid(), sessionKey: _sessionKey, role, content: c?.text || '', timestamp: m.timestamp || Date.now() }
       }))
+      _isLoadingHistory = false
       return
     }
 
     clearMessages()
     let hasOmittedImages = false
     deduped.forEach(msg => {
-      if (!msg.text && !msg.images?.length && !msg.videos?.length && !msg.audios?.length && !msg.files?.length) return
+      if (!msg.text && !msg.images?.length && !msg.videos?.length && !msg.audios?.length && !msg.files?.length && !msg.tools?.length) return
       const msgTime = msg.timestamp ? new Date(msg.timestamp) : new Date()
       if (msg.role === 'user') {
         const userAtts = msg.images?.length ? msg.images.map(i => ({
@@ -1270,7 +1444,7 @@ async function loadHistory() {
         if (msg.images?.length && !userAtts.length) hasOmittedImages = true
         appendUserMessage(msg.text, userAtts, msgTime)
       } else if (msg.role === 'assistant') {
-        appendAiMessage(msg.text, msgTime, msg.images, msg.videos, msg.audios, msg.files)
+        appendAiMessage(msg.text, msgTime, msg.images, msg.videos, msg.audios, msg.files, msg.tools)
       }
     })
     if (hasOmittedImages) {
@@ -1278,25 +1452,33 @@ async function loadHistory() {
     }
     saveMessages(result.messages.map(m => {
       const c = extractContent(m)
-      return { id: m.id || uuid(), sessionKey: _sessionKey, role: m.role, content: c?.text || '', timestamp: m.timestamp || Date.now() }
+      const role = (m.role === 'tool' || m.role === 'toolResult') ? 'assistant' : m.role
+      return { id: m.id || uuid(), sessionKey: _sessionKey, role, content: c?.text || '', timestamp: m.timestamp || Date.now() }
     }))
     scrollToBottom()
   } catch (e) {
     console.error('[chat] loadHistory error:', e)
-    if (!_messagesEl.querySelector('.msg')) appendSystemMessage('加载历史失败: ' + e.message)
+    if (_messagesEl && !_messagesEl.querySelector('.msg')) appendSystemMessage('加载历史失败: ' + e.message)
+  } finally {
+    _isLoadingHistory = false
   }
 }
 
 function dedupeHistory(messages) {
   const deduped = []
   for (const msg of messages) {
-    if (msg.role === 'toolResult') continue
+    const role = (msg.role === 'tool' || msg.role === 'toolResult') ? 'assistant' : msg.role
     const c = extractContent(msg)
-    if (!c.text && !c.images.length && !c.videos.length && !c.audios.length && !c.files.length) continue
+    if (!c.text && !c.images.length && !c.videos.length && !c.audios.length && !c.files.length && !c.tools.length) continue
+    const tools = (c.tools || []).map(t => {
+      const id = t.id || t.tool_call_id
+      const time = t.time || resolveToolTime(id, msg.timestamp)
+      return { ...t, time, messageTimestamp: msg.timestamp }
+    })
     const last = deduped[deduped.length - 1]
-    if (last && last.role === msg.role) {
-      if (msg.role === 'user' && last.text === c.text) continue
-      if (msg.role === 'assistant') {
+    if (last && last.role === role) {
+      if (role === 'user' && last.text === c.text) continue
+      if (role === 'assistant') {
         // 同文本去重（Gateway 重试产生的重复回复）
         if (c.text && last.text === c.text) continue
         // 不同文本则合并
@@ -1305,15 +1487,34 @@ function dedupeHistory(messages) {
         last.videos = [...(last.videos || []), ...c.videos]
         last.audios = [...(last.audios || []), ...c.audios]
         last.files = [...(last.files || []), ...c.files]
+        tools.forEach(t => upsertTool(last.tools, t))
         continue
       }
     }
-    deduped.push({ role: msg.role, text: c.text, images: c.images, videos: c.videos, audios: c.audios, files: c.files, timestamp: msg.timestamp })
+    deduped.push({ role, text: c.text, images: c.images, videos: c.videos, audios: c.audios, files: c.files, tools, timestamp: msg.timestamp })
   }
   return deduped
 }
 
 function extractContent(msg) {
+  const tools = []
+  collectToolsFromMessage(msg, tools)
+  if (msg.role === 'tool' || msg.role === 'toolResult') {
+    const output = typeof msg.content === 'string' ? msg.content : null
+    if (!tools.length) {
+      upsertTool(tools, {
+        id: msg.id || msg.tool_call_id || msg.toolCallId,
+        name: msg.name || msg.tool || msg.tool_name || '工具',
+        input: msg.input || msg.args || msg.parameters || null,
+        output: output || msg.output || msg.result || null,
+        status: msg.status || 'ok',
+        time: resolveToolTime(msg.tool_call_id || msg.toolCallId || msg.id, msg.timestamp),
+      })
+    } else if (output && !tools[0].output) {
+      tools[0].output = output
+    }
+    return { text: '', images: [], videos: [], audios: [], files: [], tools }
+  }
   if (Array.isArray(msg.content)) {
     const texts = [], images = [], videos = [], audios = [], files = []
     for (const block of msg.content) {
@@ -1335,6 +1536,34 @@ function extractContent(msg) {
       else if (block.type === 'file' || block.type === 'document') {
         files.push({ url: block.url || '', name: block.fileName || block.name || '文件', mimeType: block.mimeType || '', size: block.size, data: block.data })
       }
+      else if (block.type === 'tool' || block.type === 'tool_use' || block.type === 'tool_call' || block.type === 'toolCall') {
+        const callId = block.id || block.tool_call_id || block.toolCallId
+        upsertTool(tools, {
+          id: callId,
+          name: block.name || block.tool || block.tool_name || block.toolName || '工具',
+          input: block.input || block.args || block.parameters || block.arguments || null,
+          output: null,
+          status: block.status || 'ok',
+          time: resolveToolTime(callId, msg.timestamp),
+        })
+      }
+      else if (block.type === 'tool_result' || block.type === 'toolResult') {
+        const resId = block.id || block.tool_call_id || block.toolCallId
+        upsertTool(tools, {
+          id: resId,
+          name: block.name || block.tool || block.tool_name || block.toolName || '工具',
+          input: block.input || block.args || null,
+          output: block.output || block.result || block.content || null,
+          status: block.status || 'ok',
+          time: resolveToolTime(resId, msg.timestamp),
+        })
+      }
+    }
+    if (tools.length) {
+      tools.forEach(t => {
+        if (typeof t.input === 'string') t.input = stripAnsi(t.input)
+        if (typeof t.output === 'string') t.output = stripAnsi(t.output)
+      })
     }
     const mediaUrls = msg.mediaUrls || (msg.mediaUrl ? [msg.mediaUrl] : [])
     for (const url of mediaUrls) {
@@ -1344,10 +1573,10 @@ function extractContent(msg) {
       else if (/\.(jpe?g|png|gif|webp|heic|svg)(\?|$)/i.test(url)) images.push({ url, mediaType: 'image/png' })
       else files.push({ url, name: url.split('/').pop().split('?')[0] || '文件', mimeType: '' })
     }
-    return { text: stripThinkingTags(texts.join('\n')), images, videos, audios, files }
+    return { text: stripThinkingTags(texts.join('\n')), images, videos, audios, files, tools }
   }
   const text = typeof msg.text === 'string' ? msg.text : (typeof msg.content === 'string' ? msg.content : '')
-  return { text: stripThinkingTags(text), images: [], videos: [], audios: [], files: [] }
+  return { text: stripThinkingTags(text), images: [], videos: [], audios: [], files: [], tools }
 }
 
 // ── DOM 操作 ──
@@ -1413,12 +1642,16 @@ function appendUserMessage(text, attachments = [], msgTime) {
   scrollToBottom()
 }
 
-function appendAiMessage(text, msgTime, images, videos, audios, files) {
+function appendAiMessage(text, msgTime, images, videos, audios, files, tools) {
   const wrap = document.createElement('div')
   wrap.className = 'msg msg-ai'
   const bubble = document.createElement('div')
   bubble.className = 'msg-bubble'
-  bubble.innerHTML = renderMarkdown(text)
+  appendToolsToEl(bubble, tools)
+  const textEl = document.createElement('div')
+  textEl.className = 'msg-text'
+  textEl.innerHTML = renderMarkdown(text || '')
+  bubble.appendChild(textEl)
   appendImagesToEl(bubble, images)
   appendVideosToEl(bubble, videos)
   appendAudiosToEl(bubble, audios)
@@ -1521,6 +1754,101 @@ function appendFilesToEl(el, files) {
   })
 }
 
+function mergeToolEventData(entry) {
+  const id = entry?.id || entry?.tool_call_id
+  if (!id) return entry
+  const extra = _toolEventData.get(id)
+  if (!extra) return entry
+  if (entry.input == null && extra.input != null) entry.input = extra.input
+  if (entry.output == null && extra.output != null) entry.output = extra.output
+  if (entry.status == null && extra.status != null) entry.status = extra.status
+  if (entry.time == null) entry.time = extra.time || _toolEventTimes.get(id) || null
+  return entry
+}
+
+function upsertTool(tools, entry) {
+  if (!entry) return
+  const id = entry.id || entry.tool_call_id
+  let target = null
+  if (id) target = tools.find(t => t.id === id || t.tool_call_id === id)
+  if (!target && entry.name) target = tools.find(t => t.name === entry.name && !t.output)
+  if (target) {
+    if (entry.input != null && target.input == null) target.input = entry.input
+    if (entry.output != null && target.output == null) target.output = entry.output
+    if (entry.status && target.status == null) target.status = entry.status
+    if (entry.time && target.time == null) target.time = entry.time
+    return
+  }
+  tools.push(mergeToolEventData(entry))
+}
+
+function collectToolsFromMessage(message, tools) {
+  if (!message || !tools) return
+  const toolCalls = message.tool_calls || message.toolCalls || message.tools
+  if (Array.isArray(toolCalls)) {
+    toolCalls.forEach(call => {
+      const fn = call.function || null
+      const name = call.name || call.tool || call.tool_name || fn?.name
+      const input = call.input || call.args || call.parameters || call.arguments || fn?.arguments || null
+      const callId = call.id || call.tool_call_id
+      upsertTool(tools, {
+        id: callId,
+        name: name || '工具',
+        input,
+        output: null,
+        status: call.status || 'ok',
+        time: resolveToolTime(callId, message?.timestamp),
+      })
+    })
+  }
+  const toolResults = message.tool_results || message.toolResults
+  if (Array.isArray(toolResults)) {
+    toolResults.forEach(res => {
+      const resId = res.id || res.tool_call_id
+      upsertTool(tools, {
+        id: resId,
+        name: res.name || res.tool || res.tool_name || '工具',
+        input: res.input || res.args || null,
+        output: res.output || res.result || res.content || null,
+        status: res.status || 'ok',
+        time: resolveToolTime(resId, message?.timestamp),
+      })
+    })
+  }
+}
+
+/** 渲染工具调用到消息气泡 */
+function appendToolsToEl(el, tools) {
+  if (!el) return
+  const existing = el.querySelector?.('.msg-tool')
+  if (!tools?.length) {
+    if (existing) existing.remove()
+    return
+  }
+  const container = document.createElement('div')
+  container.className = 'msg-tool'
+  tools.forEach(tool => {
+    const details = document.createElement('details')
+    details.className = 'msg-tool-item'
+    const summary = document.createElement('summary')
+    const status = tool.status === 'error' ? '失败' : '成功'
+    const timeValue = getToolTime(tool) || resolveToolTime(tool.id || tool.tool_call_id, tool.messageTimestamp)
+    const timeText = timeValue ? formatTime(new Date(timeValue)) : ''
+    summary.innerHTML = `${escapeHtml(tool.name || '工具')} · ${status}${timeText ? ' · ' + timeText : ''}`
+    const body = document.createElement('div')
+    body.className = 'msg-tool-body'
+    const inputJson = stripAnsi(safeStringify(tool.input))
+    const outputJson = stripAnsi(safeStringify(tool.output))
+    body.innerHTML = `<div class="msg-tool-block"><div class="msg-tool-title">参数</div><pre>${escapeHtml(inputJson || '无参数')}</pre></div>`
+      + `<div class="msg-tool-block"><div class="msg-tool-title">结果</div><pre>${escapeHtml(outputJson || '无结果')}</pre></div>`
+    details.appendChild(summary)
+    details.appendChild(body)
+    container.appendChild(details)
+  })
+  if (existing) existing.remove()
+  el.insertBefore(container, el.firstChild)
+}
+
 /** 图片灯箱查看 */
 function showLightbox(src) {
   const existing = document.querySelector('.chat-lightbox')
@@ -1545,6 +1873,8 @@ function appendSystemMessage(text) {
 
 function clearMessages() {
   _messagesEl.querySelectorAll('.msg').forEach(m => m.remove())
+  _autoScrollEnabled = true
+  _lastScrollTop = 0
 }
 
 function showTyping(show) {
@@ -1566,9 +1896,15 @@ function showCompactionHint(show) {
   }
 }
 
-function scrollToBottom() {
+function scrollToBottom(force = false) {
   if (!_messagesEl) return
+  if (!force && !_autoScrollEnabled) return
   requestAnimationFrame(() => { _messagesEl.scrollTop = _messagesEl.scrollHeight })
+}
+
+function isAtBottom() {
+  if (!_messagesEl) return true
+  return _messagesEl.scrollHeight - _messagesEl.scrollTop - _messagesEl.clientHeight < 80
 }
 
 function updateSendState() {
@@ -1617,6 +1953,7 @@ export function cleanup() {
   _currentAiVideos = []
   _currentAiAudios = []
   _currentAiFiles = []
+  _currentAiTools = []
   _currentRunId = null
   _isStreaming = false
   _isSending = false

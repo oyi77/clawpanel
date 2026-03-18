@@ -38,6 +38,7 @@ export class WsClient {
     this._connected = false
     this._gatewayReady = false
     this._handshaking = false
+    this._connecting = false
     this._intentionalClose = false
     this._snapshot = null
     this._hello = null
@@ -50,6 +51,7 @@ export class WsClient {
   }
 
   get connected() { return this._connected }
+  get connecting() { return this._connecting }
   get gatewayReady() { return this._gatewayReady }
   get snapshot() { return this._snapshot }
   get hello() { return this._hello }
@@ -72,7 +74,12 @@ export class WsClient {
     this._token = token || ''
     // 自动检测协议：如果页面通过 HTTPS 加载（反代场景），使用 wss://
     const proto = opts.secure ?? (typeof location !== 'undefined' && location.protocol === 'https:') ? 'wss' : 'ws'
-    this._url = `${proto}://${host}/ws?token=${encodeURIComponent(this._token)}`
+    const nextUrl = `${proto}://${host}/ws?token=${encodeURIComponent(this._token)}`
+    if (this._connecting || this._handshaking || this._gatewayReady) {
+      if (this._url === nextUrl) return
+    }
+    if (this._ws && (this._ws.readyState === WebSocket.OPEN || this._ws.readyState === WebSocket.CONNECTING)) return
+    this._url = nextUrl
     this._doConnect()
   }
 
@@ -102,6 +109,7 @@ export class WsClient {
   }
 
   _doConnect() {
+    this._connecting = true
     this._closeWs()
     this._gatewayReady = false
     this._handshaking = false
@@ -113,6 +121,7 @@ export class WsClient {
 
     ws.onopen = () => {
       if (wsId !== this._wsId) return
+      this._connecting = false
       this._reconnectAttempts = 0
       this._setConnected(true)
       this._startPing()
@@ -135,6 +144,7 @@ export class WsClient {
     ws.onclose = (e) => {
       if (wsId !== this._wsId) return
       this._ws = null
+      this._connecting = false
       this._clearChallengeTimer()
       if (e.code === 4001 || e.code === 4003 || e.code === 4004) {
         this._setConnected(false, 'auth_failed', e.reason || 'Token 认证失败')
@@ -411,4 +421,6 @@ export class WsClient {
   }
 }
 
-export const wsClient = new WsClient()
+const _g = typeof window !== 'undefined' ? window : globalThis
+if (!_g.__clawpanelWsClient) _g.__clawpanelWsClient = new WsClient()
+export const wsClient = _g.__clawpanelWsClient

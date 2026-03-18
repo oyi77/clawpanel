@@ -42,7 +42,14 @@ export async function render() {
   bindActions(page)
 
   // 异步加载数据
-  loadDashboardData(page)
+  loadDashboardData(page).catch(e => {
+    console.error('[dashboard] loadDashboardData 异常:', e)
+    const cardsEl = page.querySelector('#stat-cards')
+    if (cardsEl && cardsEl.querySelector('.loading-placeholder')) {
+      cardsEl.innerHTML = `<div class="stat-card" style="grid-column:1/-1;text-align:center;color:var(--text-secondary)"><div>加载失败: ${escapeHtml(String(e?.message || e))}</div><button class="btn btn-sm btn-secondary" style="margin-top:8px" onclick="this.closest('.page')&&this.closest('.page').__retryLoad?.()">重试</button></div>`
+    }
+  })
+  page.__retryLoad = () => loadDashboardData(page).catch(() => {})
 
   // 监听 Gateway 状态变化，自动刷新仪表盘
   if (_unsubGw) _unsubGw()
@@ -57,44 +64,61 @@ export function cleanup() {
   if (_unsubGw) { _unsubGw(); _unsubGw = null }
 }
 
-async function loadDashboardData(page) {
+let _dashboardInitialized = false
+
+async function loadDashboardData(page, fullRefresh = false) {
   // 分波加载：关键数据先渲染，次要数据后填充，减少白屏等待
-  const coreP = Promise.allSettled([
-    api.getServicesStatus(),
-    api.getVersionInfo(),
-    api.readOpenclawConfig(),
+  // 轻量调用（读文件）每次都做；重量调用（spawn CLI/网络请求）只在首次或手动刷新时做
+  const withTimeout = (promise, ms) => Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error(`超时(${ms/1000}s)`)), ms))
   ])
-  const secondaryP = Promise.allSettled([
+  const coreP = withTimeout(Promise.allSettled([
+    api.getServicesStatus(),
+    api.readOpenclawConfig(),
+    // 版本信息：首次加载或手动刷新时才查询（避免 ARM 设备上频繁查 npm registry）
+    (!_dashboardInitialized || fullRefresh) ? api.getVersionInfo() : Promise.resolve(null),
+  ]), 15000)
+  const secondaryP = withTimeout(Promise.allSettled([
     api.listAgents(),
     api.readMcpConfig(),
     api.listBackups(),
-    api.getStatusSummary(),
-  ])
+    // getStatusSummary 是最重的调用（spawn openclaw status --json），只在首次加载时调用
+    (!_dashboardInitialized || fullRefresh) ? api.getStatusSummary() : Promise.resolve(null),
+  ]), 15000).catch(() => [{ status: 'rejected' }, { status: 'rejected' }, { status: 'rejected' }, { status: 'rejected' }])
   const logsP = api.readLogTail('gateway', 20).catch(() => '')
 
-  // 第一波：服务状态 + 版本 + 配置 → 立即渲染统计卡片
-  const [servicesRes, versionRes, configRes] = await coreP
+  // 第一波：服务状态 + 配置 + 版本 → 立即渲染统计卡片
+  const [servicesRes, configRes, versionRes] = await coreP
   const services = servicesRes.status === 'fulfilled' ? servicesRes.value : []
   const version = versionRes.status === 'fulfilled' ? versionRes.value : {}
   const config = configRes.status === 'fulfilled' ? configRes.value : null
   if (servicesRes.status === 'rejected') toast('服务状态加载失败', 'error')
   if (versionRes.status === 'rejected') toast('版本信息加载失败', 'error')
 
-  // 自愈：补全关键默认值
+  // 自愈：补全关键默认值（先重新读取最新配置再 patch，避免用缓存覆盖其他页面的写入）
   if (config) {
-    let patched = false
-    if (!config.gateway) config.gateway = {}
-    if (!config.gateway.mode) { config.gateway.mode = 'local'; patched = true }
-    // 修复旧版错误：mode 不应在顶层（OpenClaw 不认识）
-    if (config.mode) { delete config.mode; patched = true }
-    if (!config.tools || config.tools.profile !== 'full') {
-      config.tools = { profile: 'full', sessions: { visibility: 'all' }, ...(config.tools || {}) }
-      config.tools.profile = 'full'
-      if (!config.tools.sessions) config.tools.sessions = {}
-      config.tools.sessions.visibility = 'all'
-      patched = true
+    let needsPatch = false
+    if (!config.gateway?.mode) needsPatch = true
+    if (config.mode) needsPatch = true
+    if (!config.tools || config.tools.profile !== 'full') needsPatch = true
+    if (needsPatch) {
+      try {
+        const freshConfig = await api.readOpenclawConfig()
+        let patched = false
+        if (!freshConfig.gateway) freshConfig.gateway = {}
+        if (!freshConfig.gateway.mode) { freshConfig.gateway.mode = 'local'; patched = true }
+        if (freshConfig.mode) { delete freshConfig.mode; patched = true }
+        if (!freshConfig.tools || freshConfig.tools.profile !== 'full') {
+          freshConfig.tools = { profile: 'full', sessions: { visibility: 'all' }, ...(freshConfig.tools || {}) }
+          freshConfig.tools.profile = 'full'
+          if (!freshConfig.tools.sessions) freshConfig.tools.sessions = {}
+          freshConfig.tools.sessions.visibility = 'all'
+          patched = true
+        }
+        if (patched) api.writeOpenclawConfig(freshConfig).catch(() => {})
+      } catch {}
     }
-    if (patched) api.writeOpenclawConfig(config).catch(() => {})
   }
 
   renderStatCards(page, services, version, [], config)
@@ -112,6 +136,8 @@ async function loadDashboardData(page) {
   // 第三波：日志（最低优先级）
   const logs = await logsP
   renderLogs(page, logs)
+
+  _dashboardInitialized = true
 }
 
 function renderStatCards(page, services, version, agents, config) {

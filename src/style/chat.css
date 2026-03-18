@@ -48,6 +48,13 @@
   font-weight: 600;
   color: var(--text-secondary);
   border-bottom: 1px solid var(--border);
+  gap: 8px;
+}
+
+.chat-sidebar-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .chat-sidebar-btn {
@@ -846,6 +853,55 @@
 .msg-file-size {
   font-size: 11px;
   color: var(--text-tertiary);
+}
+
+/* 工具调用 */
+.msg-tool {
+  margin-bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.msg-tool-item {
+  border: 1px solid var(--border-primary, var(--border));
+  background: var(--bg-tertiary, var(--bg-secondary));
+  border-radius: var(--radius-md, 8px);
+  padding: 8px 10px;
+}
+.msg-tool-item > summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-secondary);
+  list-style: none;
+}
+.msg-tool-item > summary::-webkit-details-marker {
+  display: none;
+}
+.msg-tool-body {
+  margin-top: 8px;
+  display: none;
+  gap: 8px;
+}
+.msg-tool-item[open] > .msg-tool-body {
+  display: grid;
+}
+.msg-tool-block {
+  background: var(--bg-primary, var(--bg));
+  border: 1px solid var(--border-primary, var(--border));
+  border-radius: var(--radius-sm, 4px);
+  padding: 8px 10px;
+}
+.msg-tool-title {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  margin-bottom: 6px;
+}
+.msg-tool-block pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 11px;
+  color: var(--text-primary);
 }
 
 /* 首次引导提示 */
