@@ -3,6 +3,7 @@
  * 配置 Telegram / Discord 等外部消息接入，凭证校验后写入 openclaw.json
  */
 import { api } from '../lib/tauri-api.js'
+import { t } from '../lib/i18n.js'
 import { toast } from '../components/toast.js'
 import { showContentModal, showConfirm } from '../components/modal.js'
 import { icon } from '../lib/icons.js'

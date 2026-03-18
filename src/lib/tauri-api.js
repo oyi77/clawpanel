@@ -102,6 +102,7 @@ async function invoke(cmd, args = {}) {
 
 // Web 模式：通过 Vite 开发服务器的 API 端点调用真实后端
 async function webInvoke(cmd, args) {
+  console.log(`[api] webInvoke: ${cmd}`, args)
   const resp = await fetch(`/__api/${cmd}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -294,4 +295,10 @@ export const api = {
   saveImage: (id, data) => invoke('assistant_save_image', { id, data }),
   loadImage: (id) => invoke('assistant_load_image', { id }),
   deleteImage: (id) => invoke('assistant_delete_image', { id }),
+
+  // 工作流中心
+  workflowSettingsGet: () => cachedInvoke('workflow_settings_get', {}, 10000),
+  workflowSettingsSave: (settings) => { invalidate('workflow_settings_get'); return invoke('workflow_settings_save', { settings }) },
+  workflowTemplateList: () => cachedInvoke('workflow_template_list', {}, 30000),
+  workflowRunList: () => cachedInvoke('workflow_run_list', {}, 5000),
 }

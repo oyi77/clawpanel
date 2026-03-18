@@ -145,6 +145,7 @@ async function main() {
     if (req.method === 'OPTIONS') { res.statusCode = 204; res.end(); return }
 
     // API 请求
+    console.log(`[serve] ${req.method} ${req.url}`)
     await _apiMiddleware(req, res, () => {
       // 非 API → 静态文件
       serveStatic(req, res)

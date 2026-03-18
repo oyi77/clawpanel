@@ -140,8 +140,7 @@ export function renderSidebar(el) {
         <img src="/images/logo.png" alt="ClawPanel">
       </div>
       <span class="sidebar-title">ClawPanel</span>
-      <button class="sidebar-collapse-btn" id="btn-sidebar-collapse" title="折叠/展开">${collapsed ? '»' : '«'}</button>
-      <button class="sidebar-close-btn" id="btn-sidebar-close" title="关闭菜单">&times;</button>
+      <button class="sidebar-close-btn" id="btn-sidebar-close" title="${t('Close')}">&times;</button>
     </div>
     ${showSwitcher ? `<div class="instance-switcher" id="instance-switcher">
       <button class="instance-current" id="btn-instance-toggle">
@@ -158,7 +157,7 @@ export function renderSidebar(el) {
 
   for (const section of navItems) {
     html += `<div class="nav-section">
-      <div class="nav-section-title">${section.section}</div>`
+      ${section.section ? `<div class="nav-section-title">${section.section}</div>` : ''}`
 
     for (const item of section.items) {
       const active = current === item.route ? ' active' : ''
@@ -259,8 +258,8 @@ export function renderSidebar(el) {
           opt.style.opacity = '0.5'
           switchInstance(id).then(() => {
             const inst = getActiveInstance()
-            const desc = inst.type === 'local' ? '本机' : inst.name
-            toast(`已切换到 ${desc} — 模型配置、Agent 等将管理该实例`, 'success')
+            const desc = inst.type === 'local' ? t('Official') : inst.name
+            toast(`${t('Success')} — ${desc}`, 'success')
             renderSidebar(el)
             reloadCurrentRoute()
           })
@@ -320,19 +319,19 @@ async function _toggleInstanceDropdown(sidebarEl) {
   if (!dd) return
   if (dd.classList.contains('open')) { dd.classList.remove('open'); return }
 
-  dd.innerHTML = '<div style="padding:8px;color:var(--text-tertiary);font-size:12px">加载中...</div>'
+  dd.innerHTML = `<div style="padding:8px;color:var(--text-tertiary);font-size:12px">${t('Loading...')}</div>`
   dd.classList.add('open')
 
   try {
     const [data, health] = await Promise.all([api.instanceList(), api.instanceHealthAll()])
     const healthMap = Object.fromEntries((health || []).map(h => [h.id, h]))
     const activeId = getActiveInstance().id
-    let html = '<div class="instance-hint">切换后，模型配置、Agent 等页面将管理对应实例</div>'
+    let html = `<div class="instance-hint">${t('Agent Desc')}</div>`
     for (const inst of data.instances) {
       const h = healthMap[inst.id] || {}
       const active = inst.id === activeId ? ' active' : ''
       const dot = h.online !== false ? 'online' : 'offline'
-      const badge = inst.type === 'docker' ? '<span class="instance-badge docker">Docker</span>' : inst.type === 'remote' ? '<span class="instance-badge remote">远程</span>' : ''
+      const badge = inst.type === 'docker' ? '<span class="instance-badge docker">Docker</span>' : inst.type === 'remote' ? `<span class="instance-badge remote">${t('Official')}</span>` : ''
       const port = inst.endpoint ? inst.endpoint.match(/:(\d+)/)?.[1] : ''
       const portTag = port ? `<span class="instance-port">:${port}</span>` : ''
       html += `<div class="instance-option${active}" data-id="${inst.id}">
@@ -340,11 +339,11 @@ async function _toggleInstanceDropdown(sidebarEl) {
         <span class="instance-opt-name">${_escSidebar(inst.name)}</span>
         ${portTag}
         ${badge}
-        ${active ? '<span class="instance-active-tag">当前</span>' : ''}
+        ${active ? `<span class="instance-active-tag">${t('Primary')}</span>` : ''}
       </div>`
     }
     html += '<div class="instance-divider"></div>'
-    html += '<div class="instance-option instance-add" id="btn-instance-add">+ 添加实例</div>'
+    html += `<div class="instance-option instance-add" id="btn-instance-add">+ ${t('Add')}</div>`
     dd.innerHTML = html
   } catch (e) {
     dd.innerHTML = `<div style="padding:8px;color:var(--error);font-size:12px">${_escSidebar(e.message)}</div>`
@@ -356,27 +355,27 @@ async function _showAddInstanceDialog(sidebarEl) {
   overlay.className = 'docker-dialog-overlay'
   overlay.innerHTML = `
     <div class="docker-dialog">
-      <div class="docker-dialog-title">添加远程实例</div>
+      <div class="docker-dialog-title">${t('Add')}</div>
       <div class="form-group" style="margin-bottom:var(--space-md)">
-        <label class="form-label">名称</label>
-        <input class="form-input" id="inst-name" placeholder="远程服务器" />
+        <label class="form-label">${t('Name')}</label>
+        <input class="form-input" id="inst-name" placeholder="${t('Official')}" />
       </div>
       <div class="form-group" style="margin-bottom:var(--space-md)">
-        <label class="form-label">面板地址</label>
+        <label class="form-label">${t('API URL')}</label>
         <input class="form-input" id="inst-endpoint" placeholder="http://192.168.1.100:1420" />
       </div>
       <div class="form-group" style="margin-bottom:var(--space-md)">
-        <label class="form-label">Gateway 端口（可选）</label>
+        <label class="form-label">Gateway ${t('Port Detection')} (${t('Cancel')})</label>
         <input class="form-input" id="inst-gw-port" type="number" value="18789" />
       </div>
       <div class="docker-dialog-hint">
-        远程服务器需要运行 ClawPanel (serve.js)。<br/>
+        ${t('Official')} <br/>
         示例: <code>http://192.168.1.100:1420</code>
       </div>
       <div id="inst-add-error" style="color:var(--error);font-size:12px;margin-top:var(--space-sm)"></div>
       <div class="docker-dialog-actions">
-        <button class="btn btn-secondary btn-sm" id="inst-cancel">取消</button>
-        <button class="btn btn-primary btn-sm" id="inst-confirm">添加</button>
+        <button class="btn btn-secondary btn-sm" id="inst-cancel">${t('Cancel')}</button>
+        <button class="btn btn-primary btn-sm" id="inst-confirm">${t('Add')}</button>
       </div>
     </div>
   `
@@ -388,16 +387,16 @@ async function _showAddInstanceDialog(sidebarEl) {
     const endpoint = overlay.querySelector('#inst-endpoint').value.trim()
     const gwPort = parseInt(overlay.querySelector('#inst-gw-port').value) || 18789
     const errEl = overlay.querySelector('#inst-add-error')
-    if (!name || !endpoint) { errEl.textContent = '请填写名称和面板地址'; return }
+    if (!name || !endpoint) { errEl.textContent = t('Warning'); return }
     const btn = overlay.querySelector('#inst-confirm')
-    btn.disabled = true; btn.textContent = '添加中...'
+    btn.disabled = true; btn.textContent = t('Loading...')
     try {
       await api.instanceAdd({ name, type: 'remote', endpoint, gatewayPort: gwPort })
       overlay.remove()
       renderSidebar(sidebarEl)
     } catch (e) {
       errEl.textContent = e.message || String(e)
-      btn.disabled = false; btn.textContent = '添加'
+      btn.disabled = false; btn.textContent = t('Add')
     }
   }
 }

@@ -1444,6 +1444,7 @@ const ALWAYS_LOCAL = new Set([
   'assistant_list_dir', 'assistant_system_info', 'assistant_list_processes',
   'assistant_check_port', 'assistant_web_search', 'assistant_fetch_url',
   'assistant_ensure_data_dir', 'assistant_save_image', 'assistant_load_image', 'assistant_delete_image',
+  'workflow_settings_get', 'workflow_settings_save', 'workflow_template_list', 'workflow_run_list'
 ])
 
 // === 工具函数 ===
@@ -4032,6 +4033,42 @@ const handlers = {
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
     fs.writeFileSync(expanded, config)
     return true
+  },
+
+  // === 工作流中心 (Workflow) ===
+  workflow_settings_get() {
+    const p = path.join(OPENCLAW_DIR, 'workflow.json')
+    if (fs.existsSync(p)) return JSON.parse(fs.readFileSync(p, 'utf8'))
+    return {
+      enabled: true,
+      model: '',
+      approvalLevel: 2,
+      progressMode: 'detailed',
+      autoCreate: true,
+      pushProgress: true,
+    }
+  },
+
+  workflow_settings_save({ settings }) {
+    const p = path.join(OPENCLAW_DIR, 'workflow.json')
+    fs.writeFileSync(p, JSON.stringify(settings, null, 2))
+    return true
+  },
+
+  workflow_template_list() {
+    return [
+      { id: 'tiktok-viral', name: 'TikTok Viral Video Pipeline', meta: 'Last used: 2h ago • 3 steps' },
+      { id: 'market-research', name: 'Market Opportunity Research', meta: 'Last used: Yesterday • 5 steps' },
+      { id: 'insta-promo', name: 'Instagram Product Promo', meta: 'Last used: 3 days ago • 2 steps' }
+    ]
+  },
+
+  workflow_run_list() {
+    return [
+      { id: 'run-1', title: 'Generate 10 Viral Hooks', status: 'running', progress: 65, time: '15:05', meta: 'Product: AI Prompt Bible' },
+      { id: 'run-2', title: 'Daily Cashflow Report', status: 'completed', progress: 100, time: '14:40', meta: 'Status: Success' },
+      { id: 'run-3', title: 'YouTube Video Upload', status: 'failed', progress: 45, time: '12:30', meta: 'Error: API Timeout' }
+    ]
   },
 }
 

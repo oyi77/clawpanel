@@ -3,6 +3,7 @@
  * 对应上游 Dashboard 的「通信」+「自动化」合并页
  */
 import { api } from '../lib/tauri-api.js'
+import { t } from '../lib/i18n.js'
 import { toast } from '../components/toast.js'
 import { icon } from '../lib/icons.js'
 
@@ -15,8 +16,8 @@ export async function render() {
 
   page.innerHTML = `
     <div class="page-header">
-      <h1 class="page-title">通信与自动化</h1>
-      <p class="page-desc">管理 AI 在各消息渠道中的行为方式：如何回复消息、支持哪些命令、如何接收外部通知等</p>
+      <h1 class="page-title">${t('Comm Automation')}</h1>
+      <p class="page-desc">${t('Comm Desc')}</p>
     </div>
     <div class="comm-toolbar" style="display:flex;gap:8px;margin-bottom:var(--space-lg);flex-wrap:wrap">
       <button class="btn btn-sm btn-primary comm-tab active" data-tab="messages">消息</button>
@@ -25,7 +26,7 @@ export async function render() {
       <button class="btn btn-sm btn-secondary comm-tab" data-tab="hooks">Webhook</button>
       <button class="btn btn-sm btn-secondary comm-tab" data-tab="approvals">执行审批</button>
       <div style="flex:1"></div>
-      <button class="btn btn-sm btn-primary" id="btn-comm-save" disabled>${icon('save', 14)} 保存</button>
+      <button class="btn btn-sm btn-primary" id="btn-comm-save" disabled>${icon('save', 14)} ${t('Save')}</button>
     </div>
     <div id="comm-content">
       <div class="stat-card loading-placeholder" style="height:200px"></div>
