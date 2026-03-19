@@ -9,7 +9,8 @@ interface PageSkeletonProps {
     | "approvals"
     | "costs"
     | "inbox"
-    | "org-chart";
+    | "org-chart"
+    | "usage";
 }
 
 export function PageSkeleton({ variant = "list" }: PageSkeletonProps) {
@@ -92,6 +93,33 @@ export function PageSkeleton({ variant = "list" }: PageSkeletonProps) {
             </div>
           ))}
         </div>
+      </div>
+    );
+  }
+
+  if (variant === "usage") {
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-wrap items-center gap-2">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-9 w-20" />
+          ))}
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 xl:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Skeleton key={i} className="h-24 w-full" />
+          ))}
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Skeleton key={i} className="h-44 w-full" />
+          ))}
+        </div>
+
+        <Skeleton className="h-48 w-full" />
+        <Skeleton className="h-64 w-full" />
       </div>
     );
   }

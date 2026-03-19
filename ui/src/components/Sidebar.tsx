@@ -11,6 +11,8 @@ import {
   Settings,
   Languages,
   RefreshCcw,
+  BarChart3,
+  Sparkles,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
@@ -109,8 +111,10 @@ export function Sidebar() {
         <SidebarSection label={t("nav_company")}>
            <SidebarNavItem to="/org" label={t("nav_org")} icon={Network} />
            <SidebarNavItem to="/costs" label={t("nav_costs")} icon={DollarSign} />
+           <SidebarNavItem to="/usage" label={t("nav_usage")} icon={BarChart3} />
            <SidebarNavItem to="/activity" label={t("nav_activity")} icon={History} />
            <SidebarNavItem to="/workflow" label={t("nav_workflowCenter")} icon={RefreshCcw} />
+           <SidebarNavItem to="/skills" label={t("nav_skills")} icon={Sparkles} />
            <SidebarNavItem to="/company/settings" label={t("nav_settings")} icon={Settings} />
         </SidebarSection>
 

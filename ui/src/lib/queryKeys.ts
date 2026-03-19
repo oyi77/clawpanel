@@ -72,4 +72,13 @@ export const queryKeys = {
   liveRuns: (companyId: string) => ["live-runs", companyId] as const,
   runIssues: (runId: string) => ["run-issues", runId] as const,
   org: (companyId: string) => ["org", companyId] as const,
+  usage: (companyId: string, startDate: string, endDate: string) =>
+    ["usage", companyId, startDate, endDate] as const,
+  skills: {
+    list: ["skills"] as const,
+    info: (name: string) => ["skills", "info", name] as const,
+    storeSearch: (source: string, query: string) =>
+      ["skills", "store-search", source, query] as const,
+    skillHubStatus: ["skills", "skillhub-status"] as const,
+  },
 };

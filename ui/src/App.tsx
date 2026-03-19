@@ -21,6 +21,8 @@ import { ApprovalDetail } from "./pages/ApprovalDetail";
 import { Costs } from "./pages/Costs";
 import { Activity } from "./pages/Activity";
 import { WorkflowCenter } from "./pages/WorkflowCenter";
+import { Usage } from "./pages/Usage";
+import { Skills } from "./pages/Skills";
 import { Inbox } from "./pages/Inbox";
 import { CompanySettings } from "./pages/CompanySettings";
 import { DesignGuide } from "./pages/DesignGuide";
@@ -141,6 +143,8 @@ function boardRoutes() {
       <Route path="costs" element={<Costs />} />
       <Route path="activity" element={<Activity />} />
       <Route path="workflow" element={<WorkflowCenter />} />
+      <Route path="usage" element={<Usage />} />
+      <Route path="skills" element={<Skills />} />
       <Route path="inbox" element={<InboxRootRedirect />} />
       <Route path="inbox/recent" element={<Inbox />} />
       <Route path="inbox/unread" element={<Inbox />} />
