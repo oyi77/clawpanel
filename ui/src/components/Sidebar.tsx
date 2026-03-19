@@ -63,9 +63,9 @@ export function Sidebar() {
             style={{ backgroundColor: selectedCompany.brandColor }}
           />
         )}
-        <span className="flex-1 text-sm font-bold text-foreground truncate pl-1">
-          {selectedCompany?.name ?? "Select company"}
-        </span>
+         <span className="flex-1 text-sm font-bold text-foreground truncate pl-1">
+           {selectedCompany?.name ?? t("common_selectCompany")}
+         </span>
         <Button
           variant="ghost"
           size="icon-sm"
@@ -84,12 +84,12 @@ export function Sidebar() {
             className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-colors"
           >
             <SquarePen className="h-4 w-4 shrink-0" />
-            <span className="truncate">{t("New Issue")}</span>
+            <span className="truncate">{t("nav_newIssue")}</span>
           </button>
-          <SidebarNavItem to="/dashboard" label={t("Dashboard")} icon={LayoutDashboard} liveCount={liveRunCount} />
+           <SidebarNavItem to="/dashboard" label={t("nav_dashboard")} icon={LayoutDashboard} liveCount={liveRunCount} />
           <SidebarNavItem
             to="/inbox"
-            label={t("Inbox")}
+            label={t("nav_inbox")}
             icon={Inbox}
             badge={inboxBadge.inbox}
             badgeTone={inboxBadge.failedRuns > 0 ? "danger" : "default"}
@@ -97,21 +97,21 @@ export function Sidebar() {
           />
         </div>
 
-        <SidebarSection label={t("Work")}>
-          <SidebarNavItem to="/issues" label={t("Issues")} icon={CircleDot} />
-          <SidebarNavItem to="/goals" label={t("Goals")} icon={Target} />
+        <SidebarSection label={t("nav_work")}>
+           <SidebarNavItem to="/issues" label={t("nav_issues")} icon={CircleDot} />
+           <SidebarNavItem to="/goals" label={t("nav_goals")} icon={Target} />
         </SidebarSection>
 
         <SidebarProjects />
 
         <SidebarAgents />
 
-        <SidebarSection label={t("Company")}>
-          <SidebarNavItem to="/org" label={t("Org")} icon={Network} />
-          <SidebarNavItem to="/costs" label={t("Costs")} icon={DollarSign} />
-          <SidebarNavItem to="/activity" label={t("Activity")} icon={History} />
-          <SidebarNavItem to="/workflow" label={t("Workflow Center")} icon={RefreshCcw} />
-          <SidebarNavItem to="/company/settings" label={t("Settings")} icon={Settings} />
+        <SidebarSection label={t("nav_company")}>
+           <SidebarNavItem to="/org" label={t("nav_org")} icon={Network} />
+           <SidebarNavItem to="/costs" label={t("nav_costs")} icon={DollarSign} />
+           <SidebarNavItem to="/activity" label={t("nav_activity")} icon={History} />
+           <SidebarNavItem to="/workflow" label={t("nav_workflowCenter")} icon={RefreshCcw} />
+           <SidebarNavItem to="/company/settings" label={t("nav_settings")} icon={Settings} />
         </SidebarSection>
 
         {/* Modular Workflow & Update */}
@@ -121,7 +121,7 @@ export function Sidebar() {
             className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-colors w-full"
           >
             <RefreshCcw className="h-4 w-4 shrink-0" />
-            <span className="truncate">{t("Update")} / {t("Sync")}</span>
+            <span className="truncate">{t("nav_update")} / {t("nav_sync")}</span>
           </button>
 
           <div className="flex items-center gap-2 px-3 py-2 text-[11px] text-muted-foreground">
