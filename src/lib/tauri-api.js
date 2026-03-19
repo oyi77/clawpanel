@@ -301,4 +301,7 @@ export const api = {
   workflowSettingsSave: (settings) => { invalidate('workflow_settings_get'); return invoke('workflow_settings_save', { settings }) },
   workflowTemplateList: () => cachedInvoke('workflow_template_list', {}, 30000),
   workflowRunList: () => cachedInvoke('workflow_run_list', {}, 5000),
+
+  // 使用情况
+  usageGet: (startDate, endDate) => invoke('usage_get', { startDate, endDate }),
 }

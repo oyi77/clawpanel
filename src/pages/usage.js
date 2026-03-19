@@ -9,6 +9,32 @@ import { toast } from '../components/toast.js'
 
 let _days = 7
 
+function fmtCost(n) {
+  if (n == null || n <= 0) return '$0'
+  return `$${n.toFixed(4)}`
+}
+
+function fmtRate(errors, total) {
+  if (!total) return '—'
+  return `${((errors / total) * 100).toFixed(1)}%`
+}
+
+function formatTokens(n) {
+  if (n == null || n === 0) return '0'
+  if (n >= 1e9) return `${(n / 1e9).toFixed(1)}B`
+  if (n >= 1e6) return `${(n / 1e6).toFixed(1)}M`
+  if (n >= 1e3) return `${(n / 1e3).toFixed(1)}K`
+  return String(n)
+}
+
+function computeDateRange(days) {
+  const now = new Date()
+  const endDate = now.toISOString().slice(0, 10)
+  const startDate = new Date(now.getTime() - (days - 1) * 86400000)
+    .toISOString().slice(0, 10)
+  return { startDate, endDate }
+}
+
 export async function render() {
   const page = document.createElement('div')
   page.className = 'page'
@@ -17,15 +43,15 @@ export async function render() {
     <div class="page-header">
       <div>
         <h1 class="page-title">${t('Usage')}</h1>
-        <p class="page-desc">Token consumption and cost analysis</p>
+        <p class="page-desc">${t('Usage Desc')}</p>
       </div>
       <div class="page-actions">
         <div class="btn-group">
-          <button class="btn btn-sm ${_days === 1 ? 'btn-primary' : 'btn-secondary'}" data-days="1">1d</button>
-          <button class="btn btn-sm ${_days === 7 ? 'btn-primary' : 'btn-secondary'}" data-days="7">7d</button>
-          <button class="btn btn-sm ${_days === 30 ? 'btn-primary' : 'btn-secondary'}" data-days="30">30d</button>
+          <button class="btn btn-sm ${_days === 1 ? 'btn-primary' : 'btn-secondary'}" data-days="1">${t('Usage Today')}</button>
+          <button class="btn btn-sm ${_days === 7 ? 'btn-primary' : 'btn-secondary'}" data-days="7">${t('Usage 7 Days')}</button>
+          <button class="btn btn-sm ${_days === 30 ? 'btn-primary' : 'btn-secondary'}" data-days="30">${t('Usage 30 Days')}</button>
         </div>
-        <button class="btn btn-sm btn-secondary" id="btn-usage-refresh">${icon('refresh-cw', 14)} ${t('Refresh')}</button>
+        <button class="btn btn-sm btn-secondary" id="btn-usage-refresh">${icon('refresh-cw', 14)} ${t('Usage Refresh')}</button>
       </div>
     </div>
     <div id="usage-content" class="page-content">
@@ -57,15 +83,251 @@ export async function render() {
 
 async function loadUsage(page) {
   const el = page.querySelector('#usage-content')
+  el.innerHTML = `
+    <div class="usage-empty">
+      <div class="service-spinner" style="margin-bottom:12px"></div>
+      <div style="color:var(--text-tertiary);margin-bottom:8px">${t('Loading...')}</div>
+    </div>
+  `
   try {
-    const data = await api.instanceList() // Mocking for now, adjust when real API added
-    // Actual usage logic extracted from previous turn's grep
-    renderUsage(el, null) 
+    const { startDate, endDate } = computeDateRange(_days)
+    const data = await api.usageGet(startDate, endDate)
+    renderUsage(el, data, startDate, endDate)
   } catch (e) {
-    el.innerHTML = `<div class="usage-empty"><div style="color:var(--error)">${e.message}</div></div>`
+    el.innerHTML = `<div class="usage-empty"><div style="color:var(--error)">${t('Usage Load Failed')}: ${e.message}</div></div>`
   }
 }
 
-function renderUsage(el, data) {
-  if (!data) { el.innerHTML = `<div class="usage-empty">${t('No Agents Found')}</div>`; return }
+function renderUsage(el, data, startDate, endDate) {
+  if (!data) {
+    el.innerHTML = `<div class="usage-empty">${t('Usage No Data')}</div>`
+    return
+  }
+
+  const totals = data.totals || {}
+  const agg = data.aggregates || {}
+  const msgs = agg.messages || {}
+  const tools = agg.tools || {}
+  const sessions = data.sessions || []
+
+  const html = `
+    <!-- Overview Cards -->
+    <div class="overview-grid" style="margin-bottom: var(--space-xl)">
+      ${createOverviewCard(icon('message-square', 20), t('Usage Messages'), msgs.total || 0, `${msgs.user || 0} ${t('Usage User Messages')} · ${msgs.assistant || 0} ${t('Usage Assistant Messages')}`)}
+      ${createOverviewCard(icon('wrench', 20), t('Usage Tool Calls'), tools.totalCalls || 0, `${tools.uniqueTools || 0} ${t('Usage Unique Tools')}`)}
+      ${createOverviewCard(icon('alert-circle', 20), t('Usage Errors'), msgs.errors || 0, `${t('Usage Error Rate')} ${fmtRate(msgs.errors, msgs.total)}`)}
+      ${createOverviewCard(icon('zap', 20), t('Usage Total Tokens'), formatTokens(totals.totalTokens || 0), `${formatTokens(totals.input || 0)} ${t('Usage Input')} · ${formatTokens(totals.output || 0)} ${t('Usage Output')}`)}
+      ${createOverviewCard(icon('dollar-sign', 20), t('Usage Cost'), fmtCost(totals.totalCost), `${fmtCost(totals.inputCost)} ${t('Usage Input')} · ${fmtCost(totals.outputCost)} ${t('Usage Output')}`)}
+      ${createOverviewCard(icon('monitor', 20), t('Usage Sessions'), sessions.length, `${startDate} ~ ${endDate}`)}
+    </div>
+
+    <!-- Top Rankings -->
+    ${renderTopRankings(agg, tools)}
+
+    <!-- Token Breakdown -->
+    ${renderTokenBreakdown(totals)}
+
+    <!-- Daily Usage Chart -->
+    ${agg.daily && agg.daily.length > 0 ? renderDailyChart(agg.daily) : ''}
+
+    <!-- Session Details -->
+    ${sessions.length > 0 ? renderSessionList(sessions) : ''}
+  `
+
+  el.innerHTML = html
+}
+
+function createOverviewCard(iconHtml, label, value, meta) {
+  return `
+    <div class="overview-card">
+      <div class="overview-card-icon">${iconHtml}</div>
+      <div class="overview-card-body">
+        <div class="overview-card-value">${value}</div>
+        <div class="overview-card-title">${label}</div>
+        <div class="overview-card-meta">${meta}</div>
+      </div>
+    </div>
+  `
+}
+
+function renderTopRankings(agg, tools) {
+  const sections = []
+
+  if (agg.byModel && agg.byModel.length > 0) {
+    sections.push({
+      title: t('Usage Top Models'),
+      items: agg.byModel.slice(0, 5).map(m => ({
+        label: m.model || t('Usage Unknown'),
+        value: `${fmtCost(m.totals?.totalCost)} · ${formatTokens(m.totals?.totalTokens || 0)}`
+      }))
+    })
+  }
+
+  if (agg.byProvider && agg.byProvider.length > 0) {
+    sections.push({
+      title: t('Usage Top Providers'),
+      items: agg.byProvider.slice(0, 5).map(p => ({
+        label: p.provider || t('Usage Unknown'),
+        value: `${fmtCost(p.totals?.totalCost)} · ${p.count} ${t('Usage Calls')}`
+      }))
+    })
+  }
+
+  if (tools.tools && tools.tools.length > 0) {
+    sections.push({
+      title: t('Usage Top Tools'),
+      items: tools.tools.slice(0, 5).map(tool => ({
+        label: tool.name,
+        value: `${tool.count} ${t('Usage Calls')}`
+      }))
+    })
+  }
+
+  if (agg.byAgent && agg.byAgent.length > 0) {
+    sections.push({
+      title: t('Usage Top Agents'),
+      items: agg.byAgent.slice(0, 5).map(a => ({
+        label: a.agentId || 'main',
+        value: fmtCost(a.totals?.totalCost)
+      }))
+    })
+  }
+
+  if (agg.byChannel && agg.byChannel.length > 0) {
+    sections.push({
+      title: t('Usage Top Channels'),
+      items: agg.byChannel.slice(0, 5).map(c => ({
+        label: c.channel || 'webchat',
+        value: fmtCost(c.totals?.totalCost)
+      }))
+    })
+  }
+
+  if (sections.length === 0) return ''
+
+  return `
+    <div class="usage-tops-grid" style="margin-bottom: var(--space-xl)">
+      ${sections.map(section => `
+        <div class="usage-top-card">
+          <div class="usage-top-title">${section.title}</div>
+          ${section.items.map(item => `
+            <div class="flex items-center justify-between py-1.5 border-b border-border last:border-b-0">
+              <span class="text-sm font-medium truncate mr-2">${item.label}</span>
+              <span class="text-sm text-muted-foreground font-mono shrink-0">${item.value}</span>
+            </div>
+          `).join('')}
+        </div>
+      `).join('')}
+    </div>
+  `
+}
+
+function renderTokenBreakdown(totals) {
+  const input = totals.input || 0
+  const output = totals.output || 0
+  const cacheRead = totals.cacheRead || 0
+  const cacheWrite = totals.cacheWrite || 0
+  const total = input + output + cacheRead + cacheWrite
+
+  if (total === 0) return ''
+
+  const getPct = (v) => ((v / total) * 100).toFixed(1)
+
+  return `
+    <div class="usage-top-card" style="margin-bottom: var(--space-xl)">
+      <div class="usage-top-title">${t('Usage Token Breakdown')}</div>
+      <div class="flex items-center gap-4 mt-3">
+        <div class="flex-1 h-3 rounded-full overflow-hidden flex" style="height: 12px">
+          ${input > 0 ? `<div class="bg-blue-400 transition-all" style="width: ${getPct(input)}%"></div>` : ''}
+          ${output > 0 ? `<div class="bg-red-400 transition-all" style="width: ${getPct(output)}%"></div>` : ''}
+          ${cacheRead > 0 ? `<div class="bg-green-400 transition-all" style="width: ${getPct(cacheRead)}%"></div>` : ''}
+          ${cacheWrite > 0 ? `<div class="bg-amber-400 transition-all" style="width: ${getPct(cacheWrite)}%"></div>` : ''}
+        </div>
+      </div>
+      <div class="flex flex-wrap gap-x-6 gap-y-1 mt-3">
+        <div class="flex items-center gap-1.5 text-sm">
+          <span class="inline-block w-2.5 h-2.5 rounded-sm bg-blue-400"></span>
+          <span class="text-muted-foreground">${t('Usage Input')} ${formatTokens(input)}</span>
+        </div>
+        <div class="flex items-center gap-1.5 text-sm">
+          <span class="inline-block w-2.5 h-2.5 rounded-sm bg-red-400"></span>
+          <span class="text-muted-foreground">${t('Usage Output')} ${formatTokens(output)}</span>
+        </div>
+        ${cacheRead > 0 ? `
+          <div class="flex items-center gap-1.5 text-sm">
+            <span class="inline-block w-2.5 h-2.5 rounded-sm bg-green-400"></span>
+            <span class="text-muted-foreground">${t('Usage Cache Read')} ${formatTokens(cacheRead)}</span>
+          </div>
+        ` : ''}
+        ${cacheWrite > 0 ? `
+          <div class="flex items-center gap-1.5 text-sm">
+            <span class="inline-block w-2.5 h-2.5 rounded-sm bg-amber-400"></span>
+            <span class="text-muted-foreground">${t('Usage Cache Write')} ${formatTokens(cacheWrite)}</span>
+          </div>
+        ` : ''}
+      </div>
+    </div>
+  `
+}
+
+function renderDailyChart(daily) {
+  const maxTokens = Math.max(...daily.map(d => d.tokens || 0), 1)
+
+  return `
+    <div class="usage-top-card" style="margin-bottom: var(--space-xl)">
+      <div class="usage-top-title">${t('Usage Daily Usage')}</div>
+      <div class="usage-daily-chart mt-4">
+        ${daily.map(d => {
+          const pct = Math.max(2, Math.round(((d.tokens || 0) / maxTokens) * 100))
+          const dateLabel = (d.date || '').slice(5)
+          return `
+            <div class="usage-daily-bar-wrap" title="${d.date}: ${formatTokens(d.tokens)} ${t('Usage Tokens')} · ${d.messages || 0} ${t('Usage Msgs')}">
+              <div class="usage-daily-bar" style="height: ${pct}%"></div>
+              <span class="usage-daily-label">${dateLabel}</span>
+            </div>
+          `
+        }).join('')}
+      </div>
+    </div>
+  `
+}
+
+function renderSessionList(sessions) {
+  const visible = sessions.slice(0, 10)
+
+  return `
+    <div class="usage-top-card">
+      <div class="flex items-center gap-2 mb-3">
+        <div class="usage-top-title" style="margin-bottom: 0">${t('Usage Session Details')}</div>
+        <span class="text-xs text-muted-foreground">${t('Usage Recent N').replace('{{count}}', visible.length)}</span>
+      </div>
+      <div class="divide-y divide-border">
+        ${visible.map(s => {
+          const u = s.usage || {}
+          const key = (s.key || '').replace(/^agent:main:/, '')
+          const model = s.model || (u.modelUsage && u.modelUsage[0]?.model) || ''
+          const provider = (u.modelUsage && u.modelUsage[0]?.provider) || s.modelProvider || ''
+
+          return `
+            <div class="py-2.5 first:pt-0 last:pb-0">
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="text-sm font-medium truncate" style="max-width: 200px" title="${s.key}">
+                  ${key || (s.sessionId ? s.sessionId.slice(0, 12) : '—')}
+                </span>
+                ${s.agentId ? `<span class="text-xs px-1.5 py-0.5 rounded bg-bg-tertiary">${s.agentId}</span>` : ''}
+                ${model ? `<span class="text-xs px-1.5 py-0.5 rounded font-mono border border-border">${model}</span>` : ''}
+                ${provider ? `<span class="text-xs px-1.5 py-0.5 rounded bg-bg-tertiary">${provider}</span>` : ''}
+              </div>
+              <p class="text-xs text-muted-foreground mt-1">
+                ${formatTokens(u.totalTokens || 0)} ${t('Usage Tokens')}
+                · ${fmtCost(u.totalCost)}
+                · ${u.messageCounts?.total || 0} ${t('Usage Msgs')}
+                ${(u.messageCounts?.errors ?? 0) > 0 ? `<span class="text-danger"> · ${u.messageCounts.errors} ${t('Usage Err')}</span>` : ''}
+              </p>
+            </div>
+          `
+        }).join('')}
+      </div>
+    </div>
+  `
 }
