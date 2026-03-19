@@ -1444,7 +1444,10 @@ const ALWAYS_LOCAL = new Set([
   'assistant_list_dir', 'assistant_system_info', 'assistant_list_processes',
   'assistant_check_port', 'assistant_web_search', 'assistant_fetch_url',
   'assistant_ensure_data_dir', 'assistant_save_image', 'assistant_load_image', 'assistant_delete_image',
-  'workflow_settings_get', 'workflow_settings_save', 'workflow_template_list', 'workflow_run_list'
+  'workflow_settings_get', 'workflow_settings_save',
+  'workflow_template_list', 'workflow_template_get', 'workflow_template_create', 'workflow_template_update', 'workflow_template_delete',
+  'workflow_run_list', 'workflow_run_get', 'workflow_run_start', 'workflow_run_stop', 'workflow_run_pause', 'workflow_run_resume',
+  'workflow_log_list',
 ])
 
 // === 工具函数 ===
@@ -4063,11 +4066,105 @@ const handlers = {
     ]
   },
 
-  workflow_run_list() {
+  workflow_template_get({ id }) {
+    const templates = this.workflow_template_list()
+    const t = templates.find(t => t.id === id)
+    if (!t) throw new Error('Template not found')
+    return t
+  },
+
+  workflow_template_create({ name, description, steps }) {
+    const templates = this.workflow_template_list()
+    const id = name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') + '-' + Date.now()
+    const newTemplate = {
+      id,
+      name,
+      description: description || '',
+      steps: steps || [],
+      meta: `Created just now • ${(steps || []).length} steps`,
+      createdAt: new Date().toISOString(),
+    }
+    templates.push(newTemplate)
+    return newTemplate
+  },
+
+  workflow_template_update({ id, name, description, steps }) {
+    const templates = this.workflow_template_list()
+    const idx = templates.findIndex(t => t.id === id)
+    if (idx < 0) throw new Error('Template not found')
+    templates[idx] = {
+      ...templates[idx],
+      name: name ?? templates[idx].name,
+      description: description ?? templates[idx].description,
+      steps: steps ?? templates[idx].steps,
+      meta: `Updated just now • ${(steps || templates[idx].steps || []).length} steps`,
+    }
+    return templates[idx]
+  },
+
+  workflow_template_delete({ id }) {
+    const templates = this.workflow_template_list()
+    const idx = templates.findIndex(t => t.id === id)
+    if (idx < 0) throw new Error('Template not found')
+    templates.splice(idx, 1)
+    return true
+  },
+
+  workflow_run_list({ status }) {
+    const all = [
+      { id: 'run-1', templateId: 'tiktok-viral', title: 'Generate 10 Viral Hooks', status: 'running', progress: 65, time: '15:05', meta: 'Product: AI Prompt Bible', steps: 3, currentStep: 2 },
+      { id: 'run-2', templateId: 'market-research', title: 'Daily Cashflow Report', status: 'completed', progress: 100, time: '14:40', meta: 'Status: Success', steps: 5, currentStep: 5 },
+      { id: 'run-3', templateId: 'insta-promo', title: 'YouTube Video Upload', status: 'failed', progress: 45, time: '12:30', meta: 'Error: API Timeout', steps: 4, currentStep: 2 },
+      { id: 'run-4', templateId: 'tiktok-viral', title: 'Reels for Product Launch', status: 'waiting', progress: 0, time: '16:00', meta: 'Scheduled: 16:00', steps: 3, currentStep: 0 },
+      { id: 'run-5', templateId: 'market-research', title: 'Competitor Analysis', status: 'paused', progress: 30, time: '11:20', meta: 'Paused by user', steps: 5, currentStep: 2 },
+    ]
+    if (status) return all.filter(r => r.status === status)
+    return all
+  },
+
+  workflow_run_start({ templateId, title }) {
+    return {
+      id: 'run-' + Date.now(),
+      templateId,
+      title: title || 'New Workflow Run',
+      status: 'running',
+      progress: 0,
+      time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+      meta: 'Starting...',
+      steps: 3,
+      currentStep: 1,
+      startedAt: new Date().toISOString(),
+    }
+  },
+
+  workflow_run_stop({ id }) {
+    return { id, status: 'stopped', progress: 0, meta: 'Stopped by user' }
+  },
+
+  workflow_run_pause({ id }) {
+    return { id, status: 'paused', meta: 'Paused by user' }
+  },
+
+  workflow_run_resume({ id }) {
+    return { id, status: 'running', meta: 'Resumed' }
+  },
+
+  workflow_run_get({ id }) {
+    const all = this.workflow_run_list({})
+    const r = all.find(r => r.id === id)
+    if (!r) throw new Error('Run not found')
+    return r
+  },
+
+  workflow_log_list({ runId }) {
     return [
-      { id: 'run-1', title: 'Generate 10 Viral Hooks', status: 'running', progress: 65, time: '15:05', meta: 'Product: AI Prompt Bible' },
-      { id: 'run-2', title: 'Daily Cashflow Report', status: 'completed', progress: 100, time: '14:40', meta: 'Status: Success' },
-      { id: 'run-3', title: 'YouTube Video Upload', status: 'failed', progress: 45, time: '12:30', meta: 'Error: API Timeout' }
+      { ts: '16:00:01', level: 'info', msg: 'Workflow started' },
+      { ts: '16:00:02', level: 'info', msg: 'Loading template configuration' },
+      { ts: '16:00:05', level: 'info', msg: 'Step 1/3: Generating content ideas' },
+      { ts: '16:00:12', level: 'success', msg: 'Step 1 complete: 15 ideas generated' },
+      { ts: '16:00:13', level: 'info', msg: 'Step 2/3: Creating video script' },
+      { ts: '16:00:25', level: 'success', msg: 'Step 2 complete: Script finalized' },
+      { ts: '16:00:26', level: 'info', msg: 'Step 3/3: Rendering final output' },
     ]
   },
 }
