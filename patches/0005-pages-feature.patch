@@ -1,0 +1,1538 @@
+diff --git a/src/pages/skills.js b/src/pages/skills.js
+index 3da5a99..b9c1028 100644
+--- a/src/pages/skills.js
++++ b/src/pages/skills.js
+@@ -1,12 +1,17 @@
+ /**
+- * Skills 页面
+- * 基于 openclaw skills CLI，按状态分组展示所有 Skills
++ * Skills 页面 - 基于 openclaw skills CLI，按状态分组展示所有 Skills
+  */
+ import { api } from '../lib/tauri-api.js'
+ import { t } from '../lib/i18n.js'
+-import { icon, statusIcon } from '../lib/icons.js'
++import { icon } from '../lib/icons.js'
+ import { toast } from '../components/toast.js'
+ 
++let _mainTab = 'installed'
++let _filterText = ''
++let _storeQuery = ''
++let _installSource = 'skillhub'
++let _uninstallTarget = null
++
+ export async function render() {
+   const page = document.createElement('div')
+   page.className = 'page'
+@@ -15,49 +20,553 @@ export async function render() {
+     <div class="page-header">
+       <div>
+         <h1 class="page-title">${t('Skills')}</h1>
+-        <p class="page-desc">Agent skill management</p>
++        <p class="page-desc">${t('Skills Desc')}</p>
+       </div>
+       <div class="page-actions">
+-        <button class="btn btn-secondary btn-sm" id="btn-refresh-skills">${t('Refresh')}</button>
++        <button class="btn btn-secondary btn-sm" id="btn-refresh-skills">${icon('refresh-cw', 14)} ${t('Skills Refresh')}</button>
+       </div>
+     </div>
++
+     <div class="page-tabs">
+-      <div class="tab active" data-main-tab="installed">${t('Configured')}</div>
+-      <div class="tab" data-main-tab="store">${t('Search')}</div>
++      <div class="tab ${_mainTab === 'installed' ? 'active' : ''}" data-tab="installed">${t('Skills Installed')}</div>
++      <div class="tab ${_mainTab === 'store' ? 'active' : ''}" data-tab="store">${t('Skills Store')}</div>
+     </div>
+-    <div id="skills-list" class="page-content">
+-       <div class="loading-placeholder" style="height:200px"></div>
++
++    <div id="skills-content" class="page-content">
++      <div class="loading-placeholder" style="height:200px"></div>
++    </div>
++
++    <div id="skill-detail-modal" class="modal-overlay" style="display:none">
++      <div class="modal-content">
++        <div class="modal-header">
++          <h3 id="skill-detail-title">${t('Skills Details')}</h3>
++          <button class="modal-close" id="skill-detail-close">&times;</button>
++        </div>
++        <div class="modal-body" id="skill-detail-body"></div>
++      </div>
++    </div>
++
++    <div id="uninstall-modal" class="modal-overlay" style="display:none">
++      <div class="modal-content">
++        <div class="modal-header">
++          <h3>${t('Skills Uninstall')}</h3>
++          <button class="modal-close" id="uninstall-close">&times;</button>
++        </div>
++        <div class="modal-body">
++          <p>${t('Skills Uninstall Confirm').replace('{{name}}', '<span id="uninstall-name"></span>')}</p>
++        </div>
++        <div class="modal-footer">
++          <button class="btn btn-secondary" id="uninstall-cancel">${t('Cancel')}</button>
++          <button class="btn btn-danger" id="uninstall-confirm">${t('Skills Uninstall')}</button>
++        </div>
++      </div>
+     </div>
+   `
+ 
+   loadSkills(page)
+ 
+-  page.querySelector('#btn-refresh-skills').addEventListener('click', () => loadSkills(page))
++  page.addEventListener('click', (e) => {
++    const tab = e.target.closest('[data-tab]')
++    if (tab) {
++      _mainTab = tab.dataset.tab
++      page.querySelectorAll('.tab').forEach(t => t.classList.remove('active'))
++      tab.classList.add('active')
++      loadSkills(page)
++      return
++    }
++
++    if (e.target.closest('#btn-refresh-skills')) {
++      loadSkills(page)
++    }
++
++    if (e.target.closest('.skill-detail-btn')) {
++      const name = e.target.closest('.skill-detail-btn').dataset.name
++      showSkillDetail(name)
++      return
++    }
++
++    if (e.target.closest('.skill-uninstall-btn')) {
++      const name = e.target.closest('.skill-uninstall-btn').dataset.name
++      _uninstallTarget = name
++      page.querySelector('#uninstall-name').textContent = name
++      page.querySelector('#uninstall-modal').style.display = 'flex'
++      return
++    }
++
++    if (e.target.closest('#skill-detail-close')) {
++      page.querySelector('#skill-detail-modal').style.display = 'none'
++      return
++    }
++
++    if (e.target.closest('#uninstall-close') || e.target.closest('#uninstall-cancel')) {
++      page.querySelector('#uninstall-modal').style.display = 'none'
++      _uninstallTarget = null
++      return
++    }
++
++    if (e.target.closest('#uninstall-confirm')) {
++      confirmUninstall(page)
++      return
++    }
++
++    if (e.target.closest('.skill-install-btn')) {
++      const slug = e.target.closest('.skill-install-btn').dataset.slug
++      installSkill(page, slug)
++      return
++    }
++
++    if (e.target.closest('.skill-setup-cli-btn')) {
++      setupCli(page)
++      return
++    }
++
++    if (e.target.closest('.skill-search-btn')) {
++      _storeQuery = page.querySelector('#store-search-input')?.value || ''
++      loadSkills(page)
++      return
++    }
++
++    if (e.target.closest('.skill-source-btn')) {
++      _installSource = e.target.closest('.skill-source-btn').dataset.source
++      loadSkills(page)
++      return
++    }
++
++    if (e.target.closest('.skill-install-dep-btn')) {
++      const name = e.target.closest('.skill-install-dep-btn').dataset.name
++      const kind = e.target.closest('.skill-install-dep-btn').dataset.kind
++      const spec = e.target.closest('.skill-install-dep-btn').dataset.spec
++      installDep(page, name, kind, spec)
++    }
++  })
+ 
+   return page
+ }
+ 
+ async function loadSkills(page) {
+-  const container = page.querySelector('#skills-list')
+-  try {
+-    const data = await api.skillsList()
+-    renderSkills(container, data)
+-  } catch (e) {
+-    container.innerHTML = `<div class="error-state">${e.message}</div>`
++  const container = page.querySelector('#skills-content')
++
++  if (_mainTab === 'installed') {
++    try {
++      const data = await api.skillsList()
++      renderInstalledTab(container, data)
++    } catch (e) {
++      container.innerHTML = `<div class="error-state">${t('Skills Load Failed').replace('{{error}}', e.message)}</div>`
++    }
++  } else {
++    try {
++      const hubStatus = await api.skillsSkillHubCheck()
++      renderStoreTab(container, hubStatus)
++    } catch (e) {
++      container.innerHTML = `<div class="error-state">${t('Skills Load Failed').replace('{{error}}', e.message)}</div>`
++    }
+   }
+ }
+ 
+-function renderSkills(container, data) {
+-  if (!data?.skills?.length) {
+-    container.innerHTML = `<div class="empty-state">${t('No Agents Found')}</div>`
++function classifySkills(skills) {
++  const eligible = skills.filter(s => s.eligible && !s.disabled)
++  const missing = skills.filter(s => !s.eligible && !s.disabled && !s.blockedByAllowlist)
++  const disabled = skills.filter(s => s.disabled)
++  const blocked = skills.filter(s => s.blockedByAllowlist && !s.disabled)
++  return { eligible, missing, disabled, blocked }
++}
++
++function getSkillStatus(skill) {
++  if (skill.disabled) return 'disabled'
++  if (skill.blockedByAllowlist) return 'blocked'
++  if (skill.eligible) return 'eligible'
++  return 'missing'
++}
++
++function renderInstalledTab(container, data) {
++  const skills = data?.skills || []
++  const cliAvailable = data?.cliAvailable !== false
++  const groups = classifySkills(skills)
++
++  if (skills.length === 0) {
++    container.innerHTML = `
++      <div class="empty-state">
++        <p>${t('Skills No Skills')}</p>
++        <p class="text-muted-foreground" style="font-size:12px;margin-top:8px">${t('Skills No Skills Hint')}</p>
++      </div>
++    `
+     return
+   }
+-  container.innerHTML = `<div class="grid grid-cols-2 gap-4">
+-    ${data.skills.map(s => `
+-        <div class="skill-card">
+-            <strong>${s.name}</strong>
+-            <p>${s.description}</p>
++
++  let html = `
++    <div class="flex flex-col gap-2 sm:flex-row sm:items-center mb-4">
++      <input type="text" class="form-input" id="skill-filter-input" placeholder="${t('Skills Filter')}" value="${_filterText}" style="max-width: 300px">
++      <div class="flex items-center gap-2 ml-auto">
++        <button class="btn btn-outline btn-sm" id="skill-refresh-btn">${icon('refresh-cw', 14)} ${t('Skills Refresh')}</button>
++        <a href="https://clawhub.ai/skills" target="_blank" class="btn btn-outline btn-sm">
++          ClawHub ${icon('external-link', 12)}
++        </a>
++      </div>
++    </div>
++
++    <div class="flex items-center gap-2 text-xs text-muted-foreground mb-4">
++      <span>${t('Skills Summary')
++        .replace('{{available}}', groups.eligible.length)
++        .replace('{{missing}}', groups.missing.length)
++        .replace('{{disabled}}', groups.disabled.length)}</span>
++      ${!cliAvailable ? `<span class="badge badge-warning">${t('Skills CLI Unavailable')}</span>` : ''}
++    </div>
++
++    <div class="space-y-6">
++  `
++
++  const filterFn = (skill) => {
++    if (!_filterText) return true
++    const q = _filterText.toLowerCase()
++    return (skill.name || '').toLowerCase().includes(q) ||
++           (skill.description || '').toLowerCase().includes(q)
++  }
++
++  const renderGroup = (groupSkills, status, statusConfig) => {
++    const filtered = groupSkills.filter(filterFn)
++    if (filtered.length === 0) return ''
++
++    return `
++      <div class="space-y-2">
++        <div class="flex items-center gap-2">
++          <span class="${statusConfig.iconColor}">${statusConfig.icon}</span>
++          <span class="text-sm font-medium ${statusConfig.textColor}">
++            ${t(statusConfig.labelKey)} (${filtered.length})
++          </span>
++        </div>
++        <div class="border border-border">
++          ${filtered.map(skill => renderSkillRow(skill, status)).join('')}
++        </div>
++      </div>
++    `
++  }
++
++  const statusConfigs = {
++    eligible: { icon: icon('check-circle', 16), iconColor: 'text-emerald-500', textColor: 'text-emerald-600', labelKey: 'Skills Available' },
++    missing: { icon: icon('alert-triangle', 16), iconColor: 'text-amber-500', textColor: 'text-amber-600', labelKey: 'Skills Missing Deps' },
++    disabled: { icon: icon('pause-circle', 16), iconColor: 'text-muted-foreground', textColor: 'text-muted-foreground', labelKey: 'Skills Disabled' },
++    blocked: { icon: icon('x-circle', 16), iconColor: 'text-destructive', textColor: 'text-destructive', labelKey: 'Skills Blocked' }
++  }
++
++  html += renderGroup(groups.eligible, 'eligible', statusConfigs.eligible)
++  html += renderGroup(groups.missing, 'missing', statusConfigs.missing)
++  html += renderGroup(groups.disabled, 'disabled', statusConfigs.disabled)
++  html += renderGroup(groups.blocked, 'blocked', statusConfigs.blocked)
++
++  html += '</div>'
++  container.innerHTML = html
++
++  container.querySelector('#skill-filter-input')?.addEventListener('input', (e) => {
++    _filterText = e.target.value
++    renderInstalledTab(container, data)
++  })
++}
++
++function renderSkillRow(skill, status) {
++  const missingBins = skill.missing?.bins || []
++  const missingEnv = skill.missing?.env || []
++  const missingConfig = skill.missing?.config || []
++  const installOpts = skill.install || []
++
++  let statusBadge = ''
++  switch (status) {
++    case 'eligible': statusBadge = '<span class="badge badge-success">' + t('Skills Available') + '</span>'; break
++    case 'missing': statusBadge = '<span class="badge badge-outline">' + t('Skills Missing Deps') + '</span>'; break
++    case 'disabled': statusBadge = '<span class="badge badge-secondary">' + t('Skills Disabled') + '</span>'; break
++    case 'blocked': statusBadge = '<span class="badge badge-danger">' + t('Skills Blocked') + '</span>'; break
++  }
++
++  let missingHtml = ''
++  if (missingBins.length > 0) {
++    missingHtml += `<p class="text-xs text-amber-600">${t('Skills Missing Bins')} ${missingBins.map(b => `<code class="mx-0.5 px-1 py-0.5 bg-muted rounded text-[11px]">${b}</code>`).join('')}</p>`
++  }
++  if (missingEnv.length > 0) {
++    missingHtml += `<p class="text-xs text-amber-600">${t('Skills Missing Env')} ${missingEnv.map(e => `<code class="mx-0.5 px-1 py-0.5 bg-muted rounded text-[11px]">${e}</code>`).join('')}</p>`
++  }
++  if (missingConfig.length > 0) {
++    missingHtml += `<p class="text-xs text-amber-600">${t('Skills Missing Config')} ${missingConfig.map(c => `<code class="mx-0.5 px-1 py-0.5 bg-muted rounded text-[11px]">${c}</code>`).join('')}</p>`
++  }
++
++  let installDepHtml = ''
++  if (status === 'missing' && installOpts.length > 0) {
++    installDepHtml = `<div class="flex flex-wrap gap-1.5 pt-1">
++      ${installOpts.map(opt => `
++        <button class="btn btn-sm skill-install-dep-btn" data-name="${skill.name}" data-kind="${opt.kind}" data-spec="${JSON.stringify(opt)}">
++          ${icon('download', 12)} ${opt.label}
++        </button>
++      `).join('')}
++    </div>`
++  }
++
++  return `
++    <div class="flex items-start gap-3 px-3 py-2.5 hover:bg-accent/30 transition-colors border-b border-border last:border-b-0">
++      <div class="flex-1 min-w-0 space-y-1">
++        <div class="flex items-center gap-2">
++          <span>${skill.emoji || '📦'}</span>
++          <span class="text-sm font-medium truncate">${skill.name}</span>
++          <span class="text-xs text-muted-foreground">
++            ${skill.bundled ? t('Skills Bundled') : (skill.source || t('Skills Custom'))}
++          </span>
++          ${skill.homepage ? `<a href="${skill.homepage}" target="_blank" class="text-xs text-blue-500 hover:underline">${icon('external-link', 12)}</a>` : ''}
+         </div>
+-    `).join('')}
+-  </div>`
++        ${skill.description ? `<p class="text-xs text-muted-foreground truncate">${skill.description}</p>` : ''}
++        ${missingHtml}
++        ${installDepHtml}
++      </div>
++      <div class="flex items-center gap-2 shrink-0 pt-0.5">
++        <button class="btn btn-ghost btn-sm skill-detail-btn" data-name="${skill.name}">
++          ${icon('info', 14)} ${t('Skills Details')}
++        </button>
++        ${!skill.bundled ? `
++          <button class="btn btn-ghost btn-sm text-danger hover:text-danger skill-uninstall-btn" data-name="${skill.name}">
++            ${icon('trash', 14)} ${t('Skills Uninstall')}
++          </button>
++        ` : ''}
++        ${statusBadge}
++      </div>
++    </div>
++  `
++}
++
++async function renderStoreTab(container, hubStatus) {
++  const cliInstalled = !!hubStatus?.installed
++  const cliVersion = hubStatus?.version || ''
++
++  let cliBadge = ''
++  if (_installSource === 'skillhub') {
++    if (cliInstalled) {
++      cliBadge = `<span class="badge badge-success">${icon('check-circle', 12)} ${t('Skills CLI Version').replace('{{version}}', cliVersion)}</span>`
++    } else {
++      cliBadge = `<span class="badge badge-warning">${icon('alert-triangle', 12)} ${t('Skills CLI Missing')}</span>`
++    }
++  }
++
++  let html = `
++    <div class="flex flex-col gap-2 sm:flex-row sm:items-center mb-4">
++      <div class="btn-group">
++        <button class="btn btn-sm ${_installSource === 'skillhub' ? 'btn-primary' : 'btn-secondary'} skill-source-btn" data-source="skillhub">${t('Skills SkillHub')}</button>
++        <button class="btn btn-sm ${_installSource === 'clawhub' ? 'btn-primary' : 'btn-secondary'} skill-source-btn" data-source="clawhub">${t('Skills ClawHub')}</button>
++      </div>
++
++      <div class="flex flex-1 items-center gap-2">
++        <input type="text" class="form-input flex-1" id="store-search-input" placeholder="${t('Skills Search Placeholder')}" value="${_storeQuery}">
++        <button class="btn btn-sm btn-primary skill-search-btn">${icon('search', 14)} ${t('Skills Search')}</button>
++      </div>
++
++      <div class="flex items-center gap-2">
++        ${_installSource === 'skillhub' && !cliInstalled ? `
++          <button class="btn btn-outline btn-sm skill-setup-cli-btn">
++            ${icon('terminal', 14)} ${t('Skills Setup CLI')}
++          </button>
++        ` : ''}
++        <a href="${_installSource === 'skillhub' ? 'https://skillhub.tencent.com' : 'https://clawhub.ai/skills'}" target="_blank" class="btn btn-outline btn-sm">
++          ${t('Skills Browse')} ${icon('external-link', 12)}
++        </a>
++      </div>
++    </div>
++
++    <div class="flex items-center gap-2 text-xs text-muted-foreground mb-4">
++      ${cliBadge}
++    </div>
++  `
++
++  if (_storeQuery) {
++    html += `<div id="store-results" class="border border-border min-h-[200px] max-h-[calc(100vh-320px)] overflow-y-auto">
++      <div class="flex items-center justify-center h-48 text-sm text-muted-foreground">
++        ${t('Loading...')}
++      </div>
++    </div>`
++
++    container.innerHTML = html
++
++    try {
++      const results = _installSource === 'skillhub'
++        ? await api.skillsSkillHubSearch(_storeQuery)
++        : await api.skillsClawHubSearch(_storeQuery)
++      renderStoreResults(container, results)
++    } catch (e) {
++      container.querySelector('#store-results').innerHTML = `
++        <div class="flex items-center justify-center h-48 text-sm text-destructive">
++          ${t('Skills Search Failed').replace('{{error}}', e.message)}
++        </div>
++      `
++    }
++  } else {
++    html += `
++      <div class="border border-border min-h-[200px] flex items-center justify-center">
++        <p class="text-sm text-muted-foreground">${t('Skills Search Empty')}</p>
++      </div>
++    `
++    container.innerHTML = html
++  }
++}
++
++function renderStoreResults(container, results) {
++  const resultsEl = container.querySelector('#store-results')
++  if (!results || results.length === 0) {
++    resultsEl.innerHTML = `
++      <div class="flex items-center justify-center h-48 text-sm text-muted-foreground">
++        ${t('Skills Search No Results')}
++      </div>
++    `
++    return
++  }
++
++  resultsEl.innerHTML = results.map(item => {
++    const slug = item.slug || item.name || ''
++    return `
++      <div class="flex items-center gap-3 px-3 py-2.5 hover:bg-accent/30 transition-colors border-b border-border last:border-b-0">
++        <div class="flex-1 min-w-0">
++          <p class="text-sm font-medium truncate">${slug}</p>
++          <p class="text-xs text-muted-foreground truncate">${item.description || item.summary || ''}</p>
++        </div>
++        <button class="btn btn-sm btn-primary shrink-0 skill-install-btn" data-slug="${slug}">
++          ${icon('download', 14)} ${t('Skills Install')}
++        </button>
++      </div>
++    `
++  }).join('')
++}
++
++async function showSkillDetail(name) {
++  const modal = document.querySelector('#skill-detail-modal')
++  const title = document.querySelector('#skill-detail-title')
++  const body = document.querySelector('#skill-detail-body')
++
++  title.textContent = t('Loading...')
++  body.innerHTML = `<div class="flex items-center justify-center py-8">${icon('loader', 20)}</div>`
++  modal.style.display = 'flex'
++
++  try {
++    const skill = await api.skillsInfo(name)
++    title.textContent = `${skill.emoji || '📦'} ${skill.name}`
++
++    let html = `<div class="text-xs text-muted-foreground space-y-1">
++      <p>${t('Skills Source')} ${skill.source || '—'}</p>
++      ${skill.filePath ? `<p>${t('Skills Path')} <code class="px-1 py-0.5 bg-muted rounded text-[11px]">${skill.filePath}</code></p>` : ''}
++      ${skill.homepage ? `<a href="${skill.homepage}" target="_blank" class="text-blue-500 hover:underline">${skill.homepage}</a>` : ''}
++    </div>`
++
++    const reqs = skill.requirements || {}
++    const miss = skill.missing || {}
++
++    if ((reqs.bins?.length || reqs.env?.length) && reqs.bins?.length > 0) {
++      html += `<div class="mt-4"><p class="text-xs font-medium mb-2">${t('Skills Requirements')}</p>`
++      if (reqs.bins?.length > 0) {
++        html += `<div class="flex flex-wrap gap-1.5">`
++        reqs.bins.forEach(b => {
++          const ok = !(miss.bins ?? []).includes(b)
++          html += `<code class="px-1.5 py-0.5 rounded text-[11px] ${ok ? 'bg-emerald-500/10 text-emerald-600' : 'bg-destructive/10 text-destructive'}">${ok ? '✓' : '✗'} ${b}</code>`
++        })
++        html += `</div>`
++      }
++      if (reqs.env?.length > 0) {
++        html += `<div class="flex flex-wrap gap-1.5 mt-2">`
++        reqs.env.forEach(e => {
++          const ok = !(miss.env ?? []).includes(e)
++          html += `<code class="px-1.5 py-0.5 rounded text-[11px] ${ok ? 'bg-emerald-500/10 text-emerald-600' : 'bg-destructive/10 text-destructive'}">${ok ? '✓' : '✗'} ${e}</code>`
++        })
++        html += `</div>`
++      }
++      html += `</div>`
++    }
++
++    if (skill.install?.length > 0 && !skill.eligible) {
++      html += `<div class="mt-4"><p class="text-xs font-medium mb-1">${t('Skills Install Options')}</p>`
++      html += skill.install.map(opt => `<span class="text-xs text-muted-foreground mr-2">→ ${opt.label}</span>`).join('')
++      html += `</div>`
++    }
++
++    body.innerHTML = html
++  } catch (e) {
++    title.textContent = t('Error')
++    body.innerHTML = `<p class="text-sm text-destructive">${e.message}</p>`
++  }
++}
++
++async function confirmUninstall(page) {
++  const name = _uninstallTarget
++  if (!name) return
++
++  const btn = page.querySelector('#uninstall-confirm')
++  btn.disabled = true
++  btn.textContent = t('Skills Uninstalling')
++
++  try {
++    await api.skillsUninstall(name)
++    toast(t('Skills Uninstalled Success').replace('{{name}}', name), 'success')
++    page.querySelector('#uninstall-modal').style.display = 'none'
++    _uninstallTarget = null
++    loadSkills(page)
++  } catch (e) {
++    toast(t('Skills Uninstall Failed').replace('{{error}}', e.message), 'error')
++  } finally {
++    btn.disabled = false
++    btn.textContent = t('Skills Uninstall')
++  }
++}
++
++async function installSkill(page, slug) {
++  const btn = page.querySelector(`.skill-install-btn[data-slug="${slug}"]`)
++  if (btn) {
++    btn.disabled = true
++    btn.innerHTML = `${icon('loader', 14)} ${t('Skills Installing')}`
++  }
++
++  try {
++    if (_installSource === 'skillhub') {
++      await api.skillsSkillHubInstall(slug)
++    } else {
++      await api.skillsClawHubInstall(slug)
++    }
++    toast(t('Skills Installed Success').replace('{{name}}', slug), 'success')
++    loadSkills(page)
++  } catch (e) {
++    toast(t('Skills Install Failed').replace('{{error}}', e.message), 'error')
++    if (btn) {
++      btn.disabled = false
++      btn.innerHTML = `${icon('download', 14)} ${t('Skills Install')}`
++    }
++  }
++}
++
++async function installDep(page, skillName, kind, specStr) {
++  const btn = page.querySelector(`.skill-install-dep-btn[data-name="${skillName}"][data-kind="${kind}"]`)
++  if (btn) {
++    btn.disabled = true
++    btn.innerHTML = `${icon('loader', 12)} ${t('Skills Installing')}`
++  }
++
++  try {
++    const spec = JSON.parse(specStr)
++    await api.skillsInstallDep(kind, spec)
++    toast(t('Skills Dep Installed').replace('{{name}}', skillName), 'success')
++    loadSkills(page)
++  } catch (e) {
++    toast(t('Skills Install Failed').replace('{{error}}', e.message), 'error')
++    if (btn) {
++      btn.disabled = false
++      btn.innerHTML = `${icon('download', 12)} ${spec.label}`
++    }
++  }
++}
++
++async function setupCli(page) {
++  const btn = page.querySelector('.skill-setup-cli-btn')
++  if (btn) {
++    btn.disabled = true
++    btn.innerHTML = `${icon('loader', 14)} ${t('Skills CLI Installing')}`
++  }
++
++  try {
++    await api.skillsSkillHubSetup(true)
++    toast(t('Skills CLI Install Success'), 'success')
++    loadSkills(page)
++  } catch (e) {
++    toast(t('Skills CLI Install Failed').replace('{{error}}', e.message), 'error')
++    if (btn) {
++      btn.disabled = false
++      btn.innerHTML = `${icon('terminal', 14)} ${t('Skills Setup CLI')}`
++    }
++  }
+ }
+diff --git a/src/pages/usage.js b/src/pages/usage.js
+index cc1bcb0..0616620 100644
+--- a/src/pages/usage.js
++++ b/src/pages/usage.js
+@@ -9,6 +9,32 @@ import { toast } from '../components/toast.js'
+ 
+ let _days = 7
+ 
++function fmtCost(n) {
++  if (n == null || n <= 0) return '$0'
++  return `$${n.toFixed(4)}`
++}
++
++function fmtRate(errors, total) {
++  if (!total) return '—'
++  return `${((errors / total) * 100).toFixed(1)}%`
++}
++
++function formatTokens(n) {
++  if (n == null || n === 0) return '0'
++  if (n >= 1e9) return `${(n / 1e9).toFixed(1)}B`
++  if (n >= 1e6) return `${(n / 1e6).toFixed(1)}M`
++  if (n >= 1e3) return `${(n / 1e3).toFixed(1)}K`
++  return String(n)
++}
++
++function computeDateRange(days) {
++  const now = new Date()
++  const endDate = now.toISOString().slice(0, 10)
++  const startDate = new Date(now.getTime() - (days - 1) * 86400000)
++    .toISOString().slice(0, 10)
++  return { startDate, endDate }
++}
++
+ export async function render() {
+   const page = document.createElement('div')
+   page.className = 'page'
+@@ -17,15 +43,15 @@ export async function render() {
+     <div class="page-header">
+       <div>
+         <h1 class="page-title">${t('Usage')}</h1>
+-        <p class="page-desc">Token consumption and cost analysis</p>
++        <p class="page-desc">${t('Usage Desc')}</p>
+       </div>
+       <div class="page-actions">
+         <div class="btn-group">
+-          <button class="btn btn-sm ${_days === 1 ? 'btn-primary' : 'btn-secondary'}" data-days="1">1d</button>
+-          <button class="btn btn-sm ${_days === 7 ? 'btn-primary' : 'btn-secondary'}" data-days="7">7d</button>
+-          <button class="btn btn-sm ${_days === 30 ? 'btn-primary' : 'btn-secondary'}" data-days="30">30d</button>
++          <button class="btn btn-sm ${_days === 1 ? 'btn-primary' : 'btn-secondary'}" data-days="1">${t('Usage Today')}</button>
++          <button class="btn btn-sm ${_days === 7 ? 'btn-primary' : 'btn-secondary'}" data-days="7">${t('Usage 7 Days')}</button>
++          <button class="btn btn-sm ${_days === 30 ? 'btn-primary' : 'btn-secondary'}" data-days="30">${t('Usage 30 Days')}</button>
+         </div>
+-        <button class="btn btn-sm btn-secondary" id="btn-usage-refresh">${icon('refresh-cw', 14)} ${t('Refresh')}</button>
++        <button class="btn btn-sm btn-secondary" id="btn-usage-refresh">${icon('refresh-cw', 14)} ${t('Usage Refresh')}</button>
+       </div>
+     </div>
+     <div id="usage-content" class="page-content">
+@@ -57,15 +83,251 @@ export async function render() {
+ 
+ async function loadUsage(page) {
+   const el = page.querySelector('#usage-content')
++  el.innerHTML = `
++    <div class="usage-empty">
++      <div class="service-spinner" style="margin-bottom:12px"></div>
++      <div style="color:var(--text-tertiary);margin-bottom:8px">${t('Loading...')}</div>
++    </div>
++  `
+   try {
+-    const data = await api.instanceList() // Mocking for now, adjust when real API added
+-    // Actual usage logic extracted from previous turn's grep
+-    renderUsage(el, null) 
++    const { startDate, endDate } = computeDateRange(_days)
++    const data = await api.usageGet(startDate, endDate)
++    renderUsage(el, data, startDate, endDate)
+   } catch (e) {
+-    el.innerHTML = `<div class="usage-empty"><div style="color:var(--error)">${e.message}</div></div>`
++    el.innerHTML = `<div class="usage-empty"><div style="color:var(--error)">${t('Usage Load Failed')}: ${e.message}</div></div>`
++  }
++}
++
++function renderUsage(el, data, startDate, endDate) {
++  if (!data) {
++    el.innerHTML = `<div class="usage-empty">${t('Usage No Data')}</div>`
++    return
++  }
++
++  const totals = data.totals || {}
++  const agg = data.aggregates || {}
++  const msgs = agg.messages || {}
++  const tools = agg.tools || {}
++  const sessions = data.sessions || []
++
++  const html = `
++    <!-- Overview Cards -->
++    <div class="overview-grid" style="margin-bottom: var(--space-xl)">
++      ${createOverviewCard(icon('message-square', 20), t('Usage Messages'), msgs.total || 0, `${msgs.user || 0} ${t('Usage User Messages')} · ${msgs.assistant || 0} ${t('Usage Assistant Messages')}`)}
++      ${createOverviewCard(icon('wrench', 20), t('Usage Tool Calls'), tools.totalCalls || 0, `${tools.uniqueTools || 0} ${t('Usage Unique Tools')}`)}
++      ${createOverviewCard(icon('alert-circle', 20), t('Usage Errors'), msgs.errors || 0, `${t('Usage Error Rate')} ${fmtRate(msgs.errors, msgs.total)}`)}
++      ${createOverviewCard(icon('zap', 20), t('Usage Total Tokens'), formatTokens(totals.totalTokens || 0), `${formatTokens(totals.input || 0)} ${t('Usage Input')} · ${formatTokens(totals.output || 0)} ${t('Usage Output')}`)}
++      ${createOverviewCard(icon('dollar-sign', 20), t('Usage Cost'), fmtCost(totals.totalCost), `${fmtCost(totals.inputCost)} ${t('Usage Input')} · ${fmtCost(totals.outputCost)} ${t('Usage Output')}`)}
++      ${createOverviewCard(icon('monitor', 20), t('Usage Sessions'), sessions.length, `${startDate} ~ ${endDate}`)}
++    </div>
++
++    <!-- Top Rankings -->
++    ${renderTopRankings(agg, tools)}
++
++    <!-- Token Breakdown -->
++    ${renderTokenBreakdown(totals)}
++
++    <!-- Daily Usage Chart -->
++    ${agg.daily && agg.daily.length > 0 ? renderDailyChart(agg.daily) : ''}
++
++    <!-- Session Details -->
++    ${sessions.length > 0 ? renderSessionList(sessions) : ''}
++  `
++
++  el.innerHTML = html
++}
++
++function createOverviewCard(iconHtml, label, value, meta) {
++  return `
++    <div class="overview-card">
++      <div class="overview-card-icon">${iconHtml}</div>
++      <div class="overview-card-body">
++        <div class="overview-card-value">${value}</div>
++        <div class="overview-card-title">${label}</div>
++        <div class="overview-card-meta">${meta}</div>
++      </div>
++    </div>
++  `
++}
++
++function renderTopRankings(agg, tools) {
++  const sections = []
++
++  if (agg.byModel && agg.byModel.length > 0) {
++    sections.push({
++      title: t('Usage Top Models'),
++      items: agg.byModel.slice(0, 5).map(m => ({
++        label: m.model || t('Usage Unknown'),
++        value: `${fmtCost(m.totals?.totalCost)} · ${formatTokens(m.totals?.totalTokens || 0)}`
++      }))
++    })
++  }
++
++  if (agg.byProvider && agg.byProvider.length > 0) {
++    sections.push({
++      title: t('Usage Top Providers'),
++      items: agg.byProvider.slice(0, 5).map(p => ({
++        label: p.provider || t('Usage Unknown'),
++        value: `${fmtCost(p.totals?.totalCost)} · ${p.count} ${t('Usage Calls')}`
++      }))
++    })
++  }
++
++  if (tools.tools && tools.tools.length > 0) {
++    sections.push({
++      title: t('Usage Top Tools'),
++      items: tools.tools.slice(0, 5).map(tool => ({
++        label: tool.name,
++        value: `${tool.count} ${t('Usage Calls')}`
++      }))
++    })
++  }
++
++  if (agg.byAgent && agg.byAgent.length > 0) {
++    sections.push({
++      title: t('Usage Top Agents'),
++      items: agg.byAgent.slice(0, 5).map(a => ({
++        label: a.agentId || 'main',
++        value: fmtCost(a.totals?.totalCost)
++      }))
++    })
++  }
++
++  if (agg.byChannel && agg.byChannel.length > 0) {
++    sections.push({
++      title: t('Usage Top Channels'),
++      items: agg.byChannel.slice(0, 5).map(c => ({
++        label: c.channel || 'webchat',
++        value: fmtCost(c.totals?.totalCost)
++      }))
++    })
+   }
++
++  if (sections.length === 0) return ''
++
++  return `
++    <div class="usage-tops-grid" style="margin-bottom: var(--space-xl)">
++      ${sections.map(section => `
++        <div class="usage-top-card">
++          <div class="usage-top-title">${section.title}</div>
++          ${section.items.map(item => `
++            <div class="flex items-center justify-between py-1.5 border-b border-border last:border-b-0">
++              <span class="text-sm font-medium truncate mr-2">${item.label}</span>
++              <span class="text-sm text-muted-foreground font-mono shrink-0">${item.value}</span>
++            </div>
++          `).join('')}
++        </div>
++      `).join('')}
++    </div>
++  `
++}
++
++function renderTokenBreakdown(totals) {
++  const input = totals.input || 0
++  const output = totals.output || 0
++  const cacheRead = totals.cacheRead || 0
++  const cacheWrite = totals.cacheWrite || 0
++  const total = input + output + cacheRead + cacheWrite
++
++  if (total === 0) return ''
++
++  const getPct = (v) => ((v / total) * 100).toFixed(1)
++
++  return `
++    <div class="usage-top-card" style="margin-bottom: var(--space-xl)">
++      <div class="usage-top-title">${t('Usage Token Breakdown')}</div>
++      <div class="flex items-center gap-4 mt-3">
++        <div class="flex-1 h-3 rounded-full overflow-hidden flex" style="height: 12px">
++          ${input > 0 ? `<div class="bg-blue-400 transition-all" style="width: ${getPct(input)}%"></div>` : ''}
++          ${output > 0 ? `<div class="bg-red-400 transition-all" style="width: ${getPct(output)}%"></div>` : ''}
++          ${cacheRead > 0 ? `<div class="bg-green-400 transition-all" style="width: ${getPct(cacheRead)}%"></div>` : ''}
++          ${cacheWrite > 0 ? `<div class="bg-amber-400 transition-all" style="width: ${getPct(cacheWrite)}%"></div>` : ''}
++        </div>
++      </div>
++      <div class="flex flex-wrap gap-x-6 gap-y-1 mt-3">
++        <div class="flex items-center gap-1.5 text-sm">
++          <span class="inline-block w-2.5 h-2.5 rounded-sm bg-blue-400"></span>
++          <span class="text-muted-foreground">${t('Usage Input')} ${formatTokens(input)}</span>
++        </div>
++        <div class="flex items-center gap-1.5 text-sm">
++          <span class="inline-block w-2.5 h-2.5 rounded-sm bg-red-400"></span>
++          <span class="text-muted-foreground">${t('Usage Output')} ${formatTokens(output)}</span>
++        </div>
++        ${cacheRead > 0 ? `
++          <div class="flex items-center gap-1.5 text-sm">
++            <span class="inline-block w-2.5 h-2.5 rounded-sm bg-green-400"></span>
++            <span class="text-muted-foreground">${t('Usage Cache Read')} ${formatTokens(cacheRead)}</span>
++          </div>
++        ` : ''}
++        ${cacheWrite > 0 ? `
++          <div class="flex items-center gap-1.5 text-sm">
++            <span class="inline-block w-2.5 h-2.5 rounded-sm bg-amber-400"></span>
++            <span class="text-muted-foreground">${t('Usage Cache Write')} ${formatTokens(cacheWrite)}</span>
++          </div>
++        ` : ''}
++      </div>
++    </div>
++  `
+ }
+ 
+-function renderUsage(el, data) {
+-  if (!data) { el.innerHTML = `<div class="usage-empty">${t('No Agents Found')}</div>`; return }
++function renderDailyChart(daily) {
++  const maxTokens = Math.max(...daily.map(d => d.tokens || 0), 1)
++
++  return `
++    <div class="usage-top-card" style="margin-bottom: var(--space-xl)">
++      <div class="usage-top-title">${t('Usage Daily Usage')}</div>
++      <div class="usage-daily-chart mt-4">
++        ${daily.map(d => {
++          const pct = Math.max(2, Math.round(((d.tokens || 0) / maxTokens) * 100))
++          const dateLabel = (d.date || '').slice(5)
++          return `
++            <div class="usage-daily-bar-wrap" title="${d.date}: ${formatTokens(d.tokens)} ${t('Usage Tokens')} · ${d.messages || 0} ${t('Usage Msgs')}">
++              <div class="usage-daily-bar" style="height: ${pct}%"></div>
++              <span class="usage-daily-label">${dateLabel}</span>
++            </div>
++          `
++        }).join('')}
++      </div>
++    </div>
++  `
++}
++
++function renderSessionList(sessions) {
++  const visible = sessions.slice(0, 10)
++
++  return `
++    <div class="usage-top-card">
++      <div class="flex items-center gap-2 mb-3">
++        <div class="usage-top-title" style="margin-bottom: 0">${t('Usage Session Details')}</div>
++        <span class="text-xs text-muted-foreground">${t('Usage Recent N').replace('{{count}}', visible.length)}</span>
++      </div>
++      <div class="divide-y divide-border">
++        ${visible.map(s => {
++          const u = s.usage || {}
++          const key = (s.key || '').replace(/^agent:main:/, '')
++          const model = s.model || (u.modelUsage && u.modelUsage[0]?.model) || ''
++          const provider = (u.modelUsage && u.modelUsage[0]?.provider) || s.modelProvider || ''
++
++          return `
++            <div class="py-2.5 first:pt-0 last:pb-0">
++              <div class="flex items-center gap-2 flex-wrap">
++                <span class="text-sm font-medium truncate" style="max-width: 200px" title="${s.key}">
++                  ${key || (s.sessionId ? s.sessionId.slice(0, 12) : '—')}
++                </span>
++                ${s.agentId ? `<span class="text-xs px-1.5 py-0.5 rounded bg-bg-tertiary">${s.agentId}</span>` : ''}
++                ${model ? `<span class="text-xs px-1.5 py-0.5 rounded font-mono border border-border">${model}</span>` : ''}
++                ${provider ? `<span class="text-xs px-1.5 py-0.5 rounded bg-bg-tertiary">${provider}</span>` : ''}
++              </div>
++              <p class="text-xs text-muted-foreground mt-1">
++                ${formatTokens(u.totalTokens || 0)} ${t('Usage Tokens')}
++                · ${fmtCost(u.totalCost)}
++                · ${u.messageCounts?.total || 0} ${t('Usage Msgs')}
++                ${(u.messageCounts?.errors ?? 0) > 0 ? `<span class="text-danger"> · ${u.messageCounts.errors} ${t('Usage Err')}</span>` : ''}
++              </p>
++            </div>
++          `
++        }).join('')}
++      </div>
++    </div>
++  `
+ }
+diff --git a/src/pages/workflow.js b/src/pages/workflow.js
+index 7f89811..485f763 100644
+--- a/src/pages/workflow.js
++++ b/src/pages/workflow.js
+@@ -1,39 +1,38 @@
+ /**
+- * Workflow Center Page (v1.2 Diagnostic)
++ * Workflow Center Page - Full CRUD for templates and runs
+  */
+-import { statusIcon, icon } from '../lib/icons.js'
++import { icon } from '../lib/icons.js'
+ import { api } from '../lib/tauri-api.js'
+ import { toast } from '../components/toast.js'
+ import { t } from '../lib/i18n.js'
+ 
++let _filterRuns = ''
++let _editTemplate = null
++let _selectedRun = null
++
+ export async function render() {
+   const page = document.createElement('div')
+   page.className = 'page'
+-  
++
+   page.innerHTML = `
+     <div class="page-header">
+       <div>
+-        <h1 class="page-title">${t('Workflow Center')} (v1.2)</h1>
+-        <p class="page-desc">System integration and automation center</p>
++        <h1 class="page-title">${t('Workflow Center')}</h1>
++        <p class="page-desc">${t('Workflow AI Desc')}</p>
+       </div>
+       <div class="page-actions">
+-        <div id="diag-msg" style="font-size:10px;color:var(--text-tertiary);margin-right:12px">Initializing...</div>
+-        <button class="btn btn-secondary" id="btn-refresh-all">
+-          ${statusIcon('sync', 14)} ${t('Sync')}
+-        </button>
+-        <button class="btn btn-primary" id="btn-new-template">
+-          ${icon('plus', 14)} ${t('New Template')}
+-        </button>
++        <button class="btn btn-secondary btn-sm" id="btn-refresh-all">${icon('refresh-cw', 14)} ${t('Refresh')}</button>
++        <button class="btn btn-primary btn-sm" id="btn-new-template">${icon('plus', 14)} ${t('New Template')}</button>
+       </div>
+     </div>
+-    
++
+     <div class="grid-layout" style="display: grid; grid-template-columns: 2fr 1fr; gap: 20px;">
+        <div class="main-column space-y-6">
+           <!-- AI Settings -->
+-          <div class="settings-card mb-6">
++          <div class="settings-card">
+             <div class="settings-title">${t('Workflow AI Settings')}</div>
+             <div class="settings-desc">${t('Workflow AI Desc')}</div>
+-            
++
+             <div class="grid grid-cols-2 gap-4 mt-6">
+               <div class="form-group">
+                 <label class="form-label">${t('Enable Workflow Interception')}</label>
+@@ -71,7 +70,7 @@ export async function render() {
+             </div>
+ 
+             <div class="mt-6 flex justify-end">
+-               <button class="btn btn-primary" id="btn-save-settings">${t('Save Settings')}</button>
++               <button class="btn btn-primary btn-sm" id="btn-save-settings">${t('Save Settings')}</button>
+             </div>
+           </div>
+ 
+@@ -84,7 +83,7 @@ export async function render() {
+               </div>
+             </div>
+             <div class="space-y-3" id="template-list-container">
+-               <div class="loading text-center py-4 opacity-50">Syncing templates...</div>
++               <div class="loading text-center py-4 opacity-50">${t('Loading...')}</div>
+             </div>
+           </div>
+        </div>
+@@ -98,107 +97,464 @@ export async function render() {
+                 <option value="">${t('All Status')}</option>
+                 <option value="running">${t('Running')}</option>
+                 <option value="completed">${t('Completed')}</option>
++                <option value="failed">${t('Failed')}</option>
++                <option value="waiting">${t('Waiting')}</option>
++                <option value="paused">${t('Pause')}</option>
+               </select>
+             </div>
+-            <div id="runs-list-container" class="space-y-4">
+-               <div class="loading text-center py-4 opacity-50">Syncing run history...</div>
++            <div id="runs-list-container" class="space-y-3">
++               <div class="loading text-center py-4 opacity-50">${t('Loading...')}</div>
+             </div>
+           </div>
+        </div>
+     </div>
+-  `
+ 
+-  const diag = page.querySelector('#diag-msg')
++    <!-- Template Edit Modal -->
++    <div id="template-modal" class="modal-overlay" style="display:none">
++      <div class="modal-content" style="max-width:600px">
++        <div class="modal-header">
++          <h3 id="template-modal-title">${t('New Template')}</h3>
++          <button class="modal-close" id="template-modal-close">&times;</button>
++        </div>
++        <div class="modal-body">
++          <div class="form-group">
++            <label class="form-label">${t('Name')}</label>
++            <input class="form-input" id="tmpl-name" placeholder="My Workflow Template">
++          </div>
++          <div class="form-group">
++            <label class="form-label">Description</label>
++            <textarea class="form-input" id="tmpl-description" rows="2" placeholder="What does this workflow do?"></textarea>
++          </div>
++          <div class="form-group">
++            <label class="form-label">Steps (one per line)</label>
++            <textarea class="form-input" id="tmpl-steps" rows="4" placeholder="Step 1: Research&#10;Step 2: Generate&#10;Step 3: Publish"></textarea>
++          </div>
++        </div>
++        <div class="modal-footer">
++          <button class="btn btn-secondary btn-sm" id="tmpl-cancel">${t('Cancel')}</button>
++          <button class="btn btn-danger btn-sm" id="tmpl-delete" style="display:none">${t('Delete')}</button>
++          <button class="btn btn-primary btn-sm" id="tmpl-save">${t('Save')}</button>
++        </div>
++      </div>
++    </div>
+ 
+-  // Data Loading
+-  async function loadAll() {
+-    if (diag) diag.textContent = 'Loading...'
+-    try {
+-      if (diag) diag.textContent = 'Fetching settings...'
+-      const settings = await api.workflowSettingsGet()
+-      if (settings) {
+-        page.querySelector('#setting-enabled').value = String(settings.enabled)
+-        page.querySelector('#setting-model').value = settings.model || ''
+-        page.querySelector('#setting-approval').value = String(settings.approvalLevel)
+-        page.querySelector('#setting-auto-create').checked = !!settings.autoCreate
+-        page.querySelector('#setting-push-progress').checked = !!settings.pushProgress
+-      }
+-
+-      if (diag) diag.textContent = 'Fetching templates...'
+-      const templates = await api.workflowTemplateList()
+-      const tContainer = page.querySelector('#template-list-container')
+-      if (templates && Array.isArray(templates) && templates.length > 0) {
+-        tContainer.innerHTML = templates.map(t => `
+-          <div class="template-card">
+-            <div class="template-info">
+-              <div class="template-name">${t.name}</div>
+-              <div class="template-meta">${t.meta}</div>
+-            </div>
+-            <button class="btn btn-icon">${icon('edit', 14)}</button>
++    <!-- Run Detail Modal -->
++    <div id="run-modal" class="modal-overlay" style="display:none">
++      <div class="modal-content" style="max-width:600px">
++        <div class="modal-header">
++          <h3 id="run-modal-title">Run Details</h3>
++          <button class="modal-close" id="run-modal-close">&times;</button>
++        </div>
++        <div class="modal-body">
++          <div id="run-detail-body"></div>
++          <div class="mt-4">
++            <div class="settings-title mb-2">${t('workflow_runLog')}</div>
++            <div id="run-log-body" class="run-log-container"></div>
+           </div>
+-        `).join('')
+-      } else {
+-        tContainer.innerHTML = `<div class="empty-state text-center py-8 text-muted-foreground italic">No templates available yet</div>`
+-      }
+-
+-      if (diag) diag.textContent = 'Fetching run list...'
+-      const runs = await api.workflowRunList()
+-      const rContainer = page.querySelector('#runs-list-container')
+-      if (runs && Array.isArray(runs) && runs.length > 0) {
+-        rContainer.innerHTML = runs.map(r => `
+-          <div class="run-item">
+-            <div class="run-header">
+-              <span class="run-badge ${r.status}">${t(r.status.charAt(0).toUpperCase() + r.status.slice(1))}</span>
+-              <span class="run-time">${r.time}</span>
+-            </div>
+-            <div class="run-title">${r.title}</div>
+-            <div class="run-time">${r.meta}</div>
+-            <div class="run-progress-bg">
+-              <div class="run-progress-fill" style="width: ${r.progress}%"></div>
+-            </div>
++        </div>
++        <div class="modal-footer">
++          <button class="btn btn-secondary btn-sm" id="run-close">${t('Close')}</button>
++          <button class="btn btn-danger btn-sm" id="run-stop-btn">${icon('stop', 14)} ${t('Stop')}</button>
++          <button class="btn btn-primary btn-sm" id="run-pause-btn">${icon('pause', 14)} ${t('Pause')}</button>
++          <button class="btn btn-primary btn-sm" id="run-resume-btn">${icon('play', 14)} ${t('Resume')}</button>
++        </div>
++      </div>
++    </div>
++
++    <!-- New Run Modal -->
++    <div id="run-new-modal" class="modal-overlay" style="display:none">
++      <div class="modal-content" style="max-width:500px">
++        <div class="modal-header">
++          <h3>${t('workflow_start')}</h3>
++          <button class="modal-close" id="run-new-modal-close">&times;</button>
++        </div>
++        <div class="modal-body">
++          <div class="form-group">
++            <label class="form-label">Template</label>
++            <select class="form-select w-full" id="run-new-template"></select>
+           </div>
+-        `).join('')
+-      } else {
+-        rContainer.innerHTML = `<div class="empty-state text-center py-8 text-muted-foreground italic">No run history found</div>`
+-      }
+-      if (diag) { diag.textContent = 'API OK'; diag.style.color = 'var(--success)' }
+-    } catch (e) {
+-      if (diag) { diag.textContent = 'API Error: ' + e.message; diag.style.color = 'var(--error)' }
+-      toast(e.message, 'error')
++          <div class="form-group">
++            <label class="form-label">Run Title</label>
++            <input class="form-input" id="run-new-title" placeholder="My workflow run">
++          </div>
++        </div>
++        <div class="modal-footer">
++          <button class="btn btn-secondary btn-sm" id="run-new-cancel">${t('Cancel')}</button>
++          <button class="btn btn-primary btn-sm" id="run-new-start">${icon('play', 14)} ${t('workflow_start')}</button>
++        </div>
++      </div>
++    </div>
++  `
++
++  loadAll(page)
++
++  // --- Event Delegation ---
++  page.addEventListener('click', (e) => {
++    if (e.target.closest('#btn-refresh-all')) {
++      loadAll(page)
++      toast(t('Success'), 'success')
++      return
+     }
+-  }
++    if (e.target.closest('#btn-new-template')) {
++      _editTemplate = null
++      page.querySelector('#template-modal-title').textContent = t('New Template')
++      page.querySelector('#tmpl-name').value = ''
++      page.querySelector('#tmpl-description').value = ''
++      page.querySelector('#tmpl-steps').value = ''
++      page.querySelector('#tmpl-delete').style.display = 'none'
++      page.querySelector('#template-modal').style.display = 'flex'
++      return
++    }
++    if (e.target.closest('#template-modal-close') || e.target.closest('#tmpl-cancel')) {
++      page.querySelector('#template-modal').style.display = 'none'
++      return
++    }
++    if (e.target.closest('#tmpl-save')) {
++      saveTemplate(page)
++      return
++    }
++    if (e.target.closest('#tmpl-delete')) {
++      deleteTemplate(page)
++      return
++    }
++    if (e.target.closest('.tmpl-edit-btn')) {
++      const id = e.target.closest('.tmpl-edit-btn').dataset.id
++      editTemplate(page, id)
++      return
++    }
++    if (e.target.closest('.tmpl-run-btn')) {
++      const id = e.target.closest('.tmpl-run-btn').dataset.id
++      const name = e.target.closest('.tmpl-run-btn').dataset.name
++      openRunNewModal(page, id, name)
++      return
++    }
++    if (e.target.closest('.run-item')) {
++      const id = e.target.closest('.run-item').dataset.id
++      openRunDetail(page, id)
++      return
++    }
++    if (e.target.closest('#filter-runs')) {
++      return
++    }
++    if (e.target.closest('#run-modal-close') || e.target.closest('#run-close')) {
++      page.querySelector('#run-modal').style.display = 'none'
++      _selectedRun = null
++      return
++    }
++    if (e.target.closest('#run-stop-btn')) {
++      stopRun(page)
++      return
++    }
++    if (e.target.closest('#run-pause-btn')) {
++      pauseRun(page)
++      return
++    }
++    if (e.target.closest('#run-resume-btn')) {
++      resumeRun(page)
++      return
++    }
++    if (e.target.closest('#run-new-modal-close') || e.target.closest('#run-new-cancel')) {
++      page.querySelector('#run-new-modal').style.display = 'none'
++      return
++    }
++    if (e.target.closest('#run-new-start')) {
++      startRun(page)
++      return
++    }
++  })
+ 
+-  // Logic bindings
+-  const refreshBtn = page.querySelector('#btn-refresh-all')
+-  refreshBtn.addEventListener('click', () => {
+-    loadAll()
+-    toast('Workflow status refreshed', 'success')
++  page.addEventListener('change', (e) => {
++    if (e.target.id === 'filter-runs') {
++      _filterRuns = e.target.value
++      loadRuns(page)
++    }
+   })
+ 
+   const saveBtn = page.querySelector('#btn-save-settings')
+-  saveBtn.addEventListener('click', async () => {
++  saveBtn?.addEventListener('click', async () => {
+     const settings = {
+-        enabled: page.querySelector('#setting-enabled').value === 'true',
+-        model: page.querySelector('#setting-model').value,
+-        approvalLevel: parseInt(page.querySelector('#setting-approval').value),
+-        autoCreate: page.querySelector('#setting-auto-create').checked,
+-        pushProgress: page.querySelector('#setting-push-progress').checked,
+-        progressMode: 'detailed'
++      enabled: page.querySelector('#setting-enabled').value === 'true',
++      model: page.querySelector('#setting-model').value,
++      approvalLevel: parseInt(page.querySelector('#setting-approval').value),
++      autoCreate: page.querySelector('#setting-auto-create').checked,
++      pushProgress: page.querySelector('#setting-push-progress').checked,
++      progressMode: 'detailed',
+     }
+     saveBtn.disabled = true
+     try {
+-        await api.workflowSettingsSave(settings)
+-        toast('Workflow AI settings saved successfully', 'success')
+-        loadAll()
+-    } catch(e) {
+-        toast(e.message, 'error')
++      await api.workflowSettingsSave(settings)
++      toast(t('Success'), 'success')
++    } catch (e) {
++      toast(e.message, 'error')
+     } finally {
+-        saveBtn.disabled = false
++      saveBtn.disabled = false
+     }
+   })
+ 
+-  // Initial load
+-  loadAll()
+-
+   return page
+ }
++
++async function loadAll(page) {
++  loadSettings(page)
++  loadTemplates(page)
++  loadRuns(page)
++}
++
++async function loadSettings(page) {
++  try {
++    const settings = await api.workflowSettingsGet()
++    if (settings) {
++      page.querySelector('#setting-enabled').value = String(settings.enabled)
++      page.querySelector('#setting-model').value = settings.model || ''
++      page.querySelector('#setting-approval').value = String(settings.approvalLevel || 2)
++      page.querySelector('#setting-auto-create').checked = !!settings.autoCreate
++      page.querySelector('#setting-push-progress').checked = !!settings.pushProgress
++    }
++  } catch {}
++}
++
++async function loadTemplates(page) {
++  const container = page.querySelector('#template-list-container')
++  try {
++    const templates = await api.workflowTemplateList()
++    if (!templates || templates.length === 0) {
++      container.innerHTML = `<div class="empty-state text-center py-8 text-muted-foreground italic">${t('workflow_noWorkflows')}</div>`
++      return
++    }
++    container.innerHTML = templates.map(tmpl => `
++      <div class="template-card">
++        <div class="template-info">
++          <div class="template-name">${tmpl.name}</div>
++          <div class="template-meta">${tmpl.meta || ''}</div>
++        </div>
++        <div class="flex items-center gap-2">
++          <button class="btn btn-ghost btn-sm tmpl-run-btn" data-id="${tmpl.id}" data-name="${tmpl.name}" title="${t('workflow_start')}">${icon('play', 14)}</button>
++          <button class="btn btn-ghost btn-sm tmpl-edit-btn" data-id="${tmpl.id}" title="${t('Edit')}">${icon('edit', 14)}</button>
++        </div>
++      </div>
++    `).join('')
++  } catch (e) {
++    container.innerHTML = `<div class="error-state">${e.message}</div>`
++  }
++}
++
++async function loadRuns(page) {
++  const container = page.querySelector('#runs-list-container')
++  const filterSelect = page.querySelector('#filter-runs')
++  if (filterSelect) filterSelect.value = _filterRuns
++  try {
++    const runs = await api.workflowRunList(_filterRuns || null)
++    if (!runs || runs.length === 0) {
++      container.innerHTML = `<div class="empty-state text-center py-8 text-muted-foreground italic">No runs found</div>`
++      return
++    }
++    container.innerHTML = runs.map(r => `
++      <div class="run-item cursor-pointer" data-id="${r.id}">
++        <div class="run-header">
++          <span class="run-badge ${r.status}">${r.status}</span>
++          <span class="run-time text-xs text-muted-foreground">${r.time}</span>
++        </div>
++        <div class="run-title text-sm font-medium">${r.title}</div>
++        <div class="run-time text-xs text-muted-foreground">${r.meta || ''}</div>
++        ${r.status !== 'completed' && r.status !== 'failed' && r.status !== 'stopped' ? `
++          <div class="run-progress-bg mt-2">
++            <div class="run-progress-fill" style="width: ${r.progress}%"></div>
++          </div>
++          <div class="text-xs text-muted-foreground mt-1">${r.progress}% ${r.currentStep ? `· Step ${r.currentStep}/${r.steps}` : ''}</div>
++        ` : ''}
++      </div>
++    `).join('')
++  } catch (e) {
++    container.innerHTML = `<div class="error-state">${e.message}</div>`
++  }
++}
++
++async function editTemplate(page, id) {
++  try {
++    const tmpl = await api.workflowTemplateGet(id)
++    _editTemplate = tmpl
++    page.querySelector('#template-modal-title').textContent = t('workflow_editTemplate')
++    page.querySelector('#tmpl-name').value = tmpl.name || ''
++    page.querySelector('#tmpl-description').value = tmpl.description || ''
++    page.querySelector('#tmpl-steps').value = Array.isArray(tmpl.steps) ? tmpl.steps.join('\n') : ''
++    page.querySelector('#tmpl-delete').style.display = 'inline-flex'
++    page.querySelector('#template-modal').style.display = 'flex'
++  } catch (e) {
++    toast(e.message, 'error')
++  }
++}
++
++async function saveTemplate(page) {
++  const name = page.querySelector('#tmpl-name').value.trim()
++  if (!name) { toast('Name is required', 'error'); return }
++  const description = page.querySelector('#tmpl-description').value.trim()
++  const stepsRaw = page.querySelector('#tmpl-steps').value.trim()
++  const steps = stepsRaw ? stepsRaw.split('\n').map(s => s.trim()).filter(Boolean) : []
++
++  const saveBtn = page.querySelector('#tmpl-save')
++  saveBtn.disabled = true
++  try {
++    if (_editTemplate) {
++      await api.workflowTemplateUpdate(_editTemplate.id, name, description, steps)
++      toast('Template updated', 'success')
++    } else {
++      await api.workflowTemplateCreate(name, description, steps)
++      toast('Template created', 'success')
++    }
++    page.querySelector('#template-modal').style.display = 'none'
++    loadTemplates(page)
++  } catch (e) {
++    toast(e.message, 'error')
++  } finally {
++    saveBtn.disabled = false
++  }
++}
++
++async function deleteTemplate(page) {
++  if (!_editTemplate) return
++  if (!confirm(t('Delete Agent Confirm'))) return
++  const btn = page.querySelector('#tmpl-delete')
++  btn.disabled = true
++  try {
++    await api.workflowTemplateDelete(_editTemplate.id)
++    toast('Template deleted', 'success')
++    page.querySelector('#template-modal').style.display = 'none'
++    loadTemplates(page)
++  } catch (e) {
++    toast(e.message, 'error')
++  } finally {
++    btn.disabled = false
++  }
++}
++
++async function openRunDetail(page, id) {
++  try {
++    const run = await api.workflowRunGet(id)
++    _selectedRun = run
++    page.querySelector('#run-modal-title').textContent = run.title
++    page.querySelector('#run-detail-body').innerHTML = `
++      <div class="flex items-center gap-3 mb-4">
++        <span class="run-badge ${run.status}">${run.status}</span>
++        <span class="text-sm text-muted-foreground">${run.time}</span>
++        <span class="text-sm text-muted-foreground">${run.meta || ''}</span>
++      </div>
++      ${run.steps ? `
++        <div class="mb-3">
++          <div class="text-xs text-muted-foreground mb-1">Progress</div>
++          <div class="run-progress-bg">
++            <div class="run-progress-fill" style="width: ${run.progress}%"></div>
++          </div>
++          <div class="text-xs mt-1">${run.progress}%${run.currentStep ? ` · Step ${run.currentStep}/${run.steps}` : ''}</div>
++        </div>
++      ` : ''}
++    `
++    const stopBtn = page.querySelector('#run-stop-btn')
++    const pauseBtn = page.querySelector('#run-pause-btn')
++    const resumeBtn = page.querySelector('#run-resume-btn')
++    if (run.status === 'running' || run.status === 'waiting') {
++      stopBtn.style.display = 'inline-flex'
++      pauseBtn.style.display = run.status === 'running' ? 'inline-flex' : 'none'
++      resumeBtn.style.display = 'none'
++    } else if (run.status === 'paused') {
++      stopBtn.style.display = 'inline-flex'
++      pauseBtn.style.display = 'none'
++      resumeBtn.style.display = 'inline-flex'
++    } else {
++      stopBtn.style.display = 'none'
++      pauseBtn.style.display = 'none'
++      resumeBtn.style.display = 'none'
++    }
++
++    const logBody = page.querySelector('#run-log-body')
++    try {
++      const logs = await api.workflowLogList(run.id)
++      logBody.innerHTML = logs.map(l => `
++        <div class="flex gap-2 text-xs py-1 border-b border-border last:border-b-0">
++          <span class="text-muted-foreground shrink-0">${l.ts}</span>
++          <span class="px-1.5 rounded text-[10px] font-mono ${l.level === 'info' ? 'bg-blue-500/10 text-blue-500' : l.level === 'success' ? 'bg-emerald-500/10 text-emerald-500' : l.level === 'error' ? 'bg-red-500/10 text-red-500' : 'bg-yellow-500/10 text-yellow-500'}">${l.level}</span>
++          <span class="text-muted-foreground">${l.msg}</span>
++        </div>
++      `).join('')
++    } catch {
++      logBody.innerHTML = `<div class="text-xs text-muted-foreground">${t('workflow_noLogs')}</div>`
++    }
++
++    page.querySelector('#run-modal').style.display = 'flex'
++  } catch (e) {
++    toast(e.message, 'error')
++  }
++}
++
++async function openRunNewModal(page, templateId, templateName) {
++  const templates = await api.workflowTemplateList()
++  const select = page.querySelector('#run-new-template')
++  select.innerHTML = templates.map(t => `<option value="${t.id}" ${t.id === templateId ? 'selected' : ''}>${t.name}</option>`).join('')
++  page.querySelector('#run-new-title').value = `Run: ${templateName}`
++  page.querySelector('#run-new-modal').style.display = 'flex'
++}
++
++async function startRun(page) {
++  const templateId = page.querySelector('#run-new-template').value
++  const title = page.querySelector('#run-new-title').value.trim()
++  if (!title) { toast('Title is required', 'error'); return }
++  const btn = page.querySelector('#run-new-start')
++  btn.disabled = true
++  try {
++    await api.workflowRunStart(templateId, title)
++    toast('Workflow started', 'success')
++    page.querySelector('#run-new-modal').style.display = 'none'
++    loadRuns(page)
++  } catch (e) {
++    toast(e.message, 'error')
++  } finally {
++    btn.disabled = false
++  }
++}
++
++async function stopRun(page) {
++  if (!_selectedRun) return
++  const btn = page.querySelector('#run-stop-btn')
++  btn.disabled = true
++  try {
++    await api.workflowRunStop(_selectedRun.id)
++    toast('Workflow stopped', 'success')
++    page.querySelector('#run-modal').style.display = 'none'
++    loadRuns(page)
++  } catch (e) {
++    toast(e.message, 'error')
++  } finally {
++    btn.disabled = false
++  }
++}
++
++async function pauseRun(page) {
++  if (!_selectedRun) return
++  const btn = page.querySelector('#run-pause-btn')
++  btn.disabled = true
++  try {
++    await api.workflowRunPause(_selectedRun.id)
++    toast('Workflow paused', 'success')
++    page.querySelector('#run-modal').style.display = 'none'
++    loadRuns(page)
++  } catch (e) {
++    toast(e.message, 'error')
++  } finally {
++    btn.disabled = false
++  }
++}
++
++async function resumeRun(page) {
++  if (!_selectedRun) return
++  const btn = page.querySelector('#run-resume-btn')
++  btn.disabled = true
++  try {
++    await api.workflowRunResume(_selectedRun.id)
++    toast('Workflow resumed', 'success')
++    page.querySelector('#run-modal').style.display = 'none'
++    loadRuns(page)
++  } catch (e) {
++    toast(e.message, 'error')
++  } finally {
++    btn.disabled = false
++  }
++}

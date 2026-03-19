@@ -42,10 +42,16 @@ export async function render() {
       <div class="config-section-title">npm 源设置</div>
       <div id="registry-bar"><div class="stat-card loading-placeholder" style="height:48px"></div></div>
     </div>
+
+    <div class="config-section" id="sync-section">
+      <div class="config-section-title">面板更新</div>
+      <div id="sync-bar"><div class="stat-card loading-placeholder" style="height:48px"></div></div>
+    </div>
   `
 
   bindEvents(page)
   loadAll(page)
+  loadSyncStatus(page)
   return page
 }
 
@@ -164,6 +170,9 @@ function bindEvents(page) {
         case 'save-registry':
           await handleSaveRegistry(page)
           break
+        case 'sync-upstream':
+          await handleSyncUpstream(page)
+          break
       }
     } catch (e) {
       toast(e.toString(), 'error')
@@ -243,4 +252,75 @@ async function handleSaveRegistry(page) {
   if (!registry) { toast('请输入源地址', 'error'); return }
   await api.setNpmRegistry(registry)
   toast('npm 源已保存', 'success')
+}
+
+async function loadSyncStatus(page) {
+  const bar = page.querySelector('#sync-bar')
+  if (!bar) return
+  try {
+    const state = await api.panelSyncStatus()
+    renderSyncPanel(bar, state, page)
+  } catch (e) {
+    bar.innerHTML = `<div class="form-hint" style="color:var(--text-tertiary)">Sync status unavailable</div>`
+  }
+}
+
+function renderSyncPanel(bar, state, page) {
+  const isRunning = state.status === 'running'
+  const isError = state.status === 'error'
+  const statusLabel = state.status === 'idle' ? 'Ready' : state.status === 'running' ? 'Syncing...' : state.status === 'success' ? 'Done' : 'Error'
+  const logLines = (state.log || []).slice(-5)
+
+  bar.innerHTML = `
+    <div class="sync-status">
+      <div class="sync-status-header">
+        <div class="sync-status-info">
+          <span class="sync-dot ${state.status === 'running' ? 'syncing' : state.status === 'error' ? 'error' : 'idle'}"></span>
+          <span style="font-weight:600;font-size:var(--font-size-sm)">${statusLabel}</span>
+          <span style="font-size:var(--font-size-xs);color:var(--text-tertiary);margin-left:8px">${state.message || ''}</span>
+        </div>
+        <div class="sync-actions">
+          ${isRunning ? `
+            <button class="btn btn-sm btn-secondary" disabled>
+              <span class="btn-spinner"></span>
+              Syncing...
+            </button>
+          ` : `
+            <button class="btn btn-sm btn-primary" data-action="sync-upstream">
+              Sync from Upstream
+            </button>
+          `}
+        </div>
+      </div>
+      ${state.progress > 0 && state.progress < 100 ? `
+        <div class="sync-progress">
+          <div class="sync-progress-fill" style="width:${state.progress}%"></div>
+        </div>
+      ` : ''}
+      ${logLines.length > 0 ? `
+        <div class="sync-log">
+          ${logLines.map(l => `<div class="sync-log-line">${escapeHtml(l)}</div>`).join('')}
+        </div>
+      ` : ''}
+      <div class="form-hint" style="margin-top:var(--space-xs)">
+        Sync pulls from qingchencloud/clawpanel + reapplies patches. Restart server after sync.
+      </div>
+    </div>
+  `
+
+  if (isRunning) {
+    setTimeout(() => loadSyncStatus(page), 3000)
+  }
+}
+
+async function handleSyncUpstream(page) {
+  const bar = page.querySelector('#sync-bar')
+  const btn = bar?.querySelector('[data-action="sync-upstream"]')
+  if (btn) btn.disabled = true
+  try {
+    await api.panelSyncUpstream()
+    loadSyncStatus(page)
+  } catch (e) {
+    toast('Sync failed: ' + e.message, 'error')
+  }
 }

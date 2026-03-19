@@ -1,0 +1,835 @@
+diff --git a/scripts/dev-api.js b/scripts/dev-api.js
+index ab0c416..02cce6e 100644
+--- a/scripts/dev-api.js
++++ b/scripts/dev-api.js
+@@ -1444,7 +1444,10 @@ const ALWAYS_LOCAL = new Set([
+   'assistant_list_dir', 'assistant_system_info', 'assistant_list_processes',
+   'assistant_check_port', 'assistant_web_search', 'assistant_fetch_url',
+   'assistant_ensure_data_dir', 'assistant_save_image', 'assistant_load_image', 'assistant_delete_image',
+-  'workflow_settings_get', 'workflow_settings_save', 'workflow_template_list', 'workflow_run_list'
++  'workflow_settings_get', 'workflow_settings_save',
++  'workflow_template_list', 'workflow_template_get', 'workflow_template_create', 'workflow_template_update', 'workflow_template_delete',
++  'workflow_run_list', 'workflow_run_get', 'workflow_run_start', 'workflow_run_stop', 'workflow_run_pause', 'workflow_run_resume',
++  'workflow_log_list',
+ ])
+ 
+ // === 工具函数 ===
+@@ -4063,11 +4066,105 @@ const handlers = {
+     ]
+   },
+ 
+-  workflow_run_list() {
++  workflow_template_get({ id }) {
++    const templates = this.workflow_template_list()
++    const t = templates.find(t => t.id === id)
++    if (!t) throw new Error('Template not found')
++    return t
++  },
++
++  workflow_template_create({ name, description, steps }) {
++    const templates = this.workflow_template_list()
++    const id = name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') + '-' + Date.now()
++    const newTemplate = {
++      id,
++      name,
++      description: description || '',
++      steps: steps || [],
++      meta: `Created just now • ${(steps || []).length} steps`,
++      createdAt: new Date().toISOString(),
++    }
++    templates.push(newTemplate)
++    return newTemplate
++  },
++
++  workflow_template_update({ id, name, description, steps }) {
++    const templates = this.workflow_template_list()
++    const idx = templates.findIndex(t => t.id === id)
++    if (idx < 0) throw new Error('Template not found')
++    templates[idx] = {
++      ...templates[idx],
++      name: name ?? templates[idx].name,
++      description: description ?? templates[idx].description,
++      steps: steps ?? templates[idx].steps,
++      meta: `Updated just now • ${(steps || templates[idx].steps || []).length} steps`,
++    }
++    return templates[idx]
++  },
++
++  workflow_template_delete({ id }) {
++    const templates = this.workflow_template_list()
++    const idx = templates.findIndex(t => t.id === id)
++    if (idx < 0) throw new Error('Template not found')
++    templates.splice(idx, 1)
++    return true
++  },
++
++  workflow_run_list({ status }) {
++    const all = [
++      { id: 'run-1', templateId: 'tiktok-viral', title: 'Generate 10 Viral Hooks', status: 'running', progress: 65, time: '15:05', meta: 'Product: AI Prompt Bible', steps: 3, currentStep: 2 },
++      { id: 'run-2', templateId: 'market-research', title: 'Daily Cashflow Report', status: 'completed', progress: 100, time: '14:40', meta: 'Status: Success', steps: 5, currentStep: 5 },
++      { id: 'run-3', templateId: 'insta-promo', title: 'YouTube Video Upload', status: 'failed', progress: 45, time: '12:30', meta: 'Error: API Timeout', steps: 4, currentStep: 2 },
++      { id: 'run-4', templateId: 'tiktok-viral', title: 'Reels for Product Launch', status: 'waiting', progress: 0, time: '16:00', meta: 'Scheduled: 16:00', steps: 3, currentStep: 0 },
++      { id: 'run-5', templateId: 'market-research', title: 'Competitor Analysis', status: 'paused', progress: 30, time: '11:20', meta: 'Paused by user', steps: 5, currentStep: 2 },
++    ]
++    if (status) return all.filter(r => r.status === status)
++    return all
++  },
++
++  workflow_run_start({ templateId, title }) {
++    return {
++      id: 'run-' + Date.now(),
++      templateId,
++      title: title || 'New Workflow Run',
++      status: 'running',
++      progress: 0,
++      time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
++      meta: 'Starting...',
++      steps: 3,
++      currentStep: 1,
++      startedAt: new Date().toISOString(),
++    }
++  },
++
++  workflow_run_stop({ id }) {
++    return { id, status: 'stopped', progress: 0, meta: 'Stopped by user' }
++  },
++
++  workflow_run_pause({ id }) {
++    return { id, status: 'paused', meta: 'Paused by user' }
++  },
++
++  workflow_run_resume({ id }) {
++    return { id, status: 'running', meta: 'Resumed' }
++  },
++
++  workflow_run_get({ id }) {
++    const all = this.workflow_run_list({})
++    const r = all.find(r => r.id === id)
++    if (!r) throw new Error('Run not found')
++    return r
++  },
++
++  workflow_log_list({ runId }) {
+     return [
+-      { id: 'run-1', title: 'Generate 10 Viral Hooks', status: 'running', progress: 65, time: '15:05', meta: 'Product: AI Prompt Bible' },
+-      { id: 'run-2', title: 'Daily Cashflow Report', status: 'completed', progress: 100, time: '14:40', meta: 'Status: Success' },
+-      { id: 'run-3', title: 'YouTube Video Upload', status: 'failed', progress: 45, time: '12:30', meta: 'Error: API Timeout' }
++      { ts: '16:00:01', level: 'info', msg: 'Workflow started' },
++      { ts: '16:00:02', level: 'info', msg: 'Loading template configuration' },
++      { ts: '16:00:05', level: 'info', msg: 'Step 1/3: Generating content ideas' },
++      { ts: '16:00:12', level: 'success', msg: 'Step 1 complete: 15 ideas generated' },
++      { ts: '16:00:13', level: 'info', msg: 'Step 2/3: Creating video script' },
++      { ts: '16:00:25', level: 'success', msg: 'Step 2 complete: Script finalized' },
++      { ts: '16:00:26', level: 'info', msg: 'Step 3/3: Rendering final output' },
+     ]
+   },
+ }
+diff --git a/src/lib/i18n.js b/src/lib/i18n.js
+index 39e6d28..c89102c 100644
+--- a/src/lib/i18n.js
++++ b/src/lib/i18n.js
+@@ -158,6 +158,116 @@ const translations = {
+     'Action': '操作',
+     'Wait User': '等待用户',
+     'Wait Approval': '等待审批',
++
++    // Usage Page
++    'Usage': '使用情况',
++    'Usage Desc': 'Token 消耗、API 费用和模型使用统计',
++    'Usage Today': '今天',
++    'Usage 7 Days': '7 天',
++    'Usage 30 Days': '30 天',
++    'Usage Refresh': '刷新',
++    'Usage Messages': '消息',
++    'Usage User Messages': '用户',
++    'Usage Assistant Messages': '助手',
++    'Usage Tool Calls': '工具调用',
++    'Usage Unique Tools': '种工具',
++    'Usage Errors': '错误',
++    'Usage Error Rate': '错误率',
++    'Usage Total Tokens': 'Token 总量',
++    'Usage Input Tokens': '输入',
++    'Usage Output Tokens': '输出',
++    'Usage Cost': '费用',
++    'Usage Input Cost': '输入',
++    'Usage Output Cost': '输出',
++    'Usage Sessions': '会话',
++    'Usage Sessions Desc': '会话数',
++    'Usage Top Models': '热门模型',
++    'Usage Top Providers': '热门服务商',
++    'Usage Top Tools': '热门工具',
++    'Usage Top Agents': '热门 Agent',
++    'Usage Top Channels': '热门渠道',
++    'Usage Unknown': '未知',
++    'Usage Calls': '次调用',
++    'Usage Token Breakdown': 'Token 分类',
++    'Usage Output': '输出',
++    'Usage Input': '输入',
++    'Usage Cache Read': '缓存读取',
++    'Usage Cache Write': '缓存写入',
++    'Usage Daily Usage': '每日用量',
++    'Usage Session Details': '会话明细',
++    'Usage Recent N': '最近 {{count}} 个',
++    'Usage Tokens': 'tokens',
++    'Usage Msgs': '条消息',
++    'Usage Err': '错误',
++    'Usage No Data': '暂无数据',
++    'Usage Load Failed': '加载失败',
++    'Usage Connecting': 'Gateway 连接中...',
++    'Usage Connecting Hint': '等待 Gateway 连接就绪后自动加载',
++    'Usage Retry': '重试',
++    'Usage Select Company': '选择公司以查看使用情况。',
++
++    // Skills Page
++    'Skills': '技能',
++    'Skills Desc': '管理已安装的技能，或从社区搜索安装新技能。',
++    'Skills Installed': '已安装',
++    'Skills Store': '搜索安装',
++    'Skills Filter': '过滤技能...',
++    'Skills Refresh': '刷新',
++    'Skills Available': '可用',
++    'Skills Missing Deps': '缺少依赖',
++    'Skills Disabled': '已禁用',
++    'Skills Blocked': '白名单阻止',
++    'Skills Total': '共 {{count}} 个技能',
++    'Skills Summary': '{{available}} 可用 / {{missing}} 缺依赖 / {{disabled}} 已禁用',
++    'Skills No Skills': '未检测到任何技能。',
++    'Skills No Skills Hint': '请确认 OpenClaw 已正确安装。技能随 OpenClaw 捆绑提供，也可自定义放置在 ~/.openclaw/skills/ 目录下。',
++    'Skills CLI Unavailable': 'CLI 不可用，仅显示本地扫描结果',
++    'Skills Bundled': '捆绑',
++    'Skills Custom': '自定义',
++    'Skills Missing Bins': '缺少命令：',
++    'Skills Missing Env': '缺少环境变量：',
++    'Skills Missing Env Hint': '需在系统环境变量中配置',
++    'Skills Missing Config': '缺少配置：',
++    'Skills Missing Config Hint': '需在 openclaw.json 中配置',
++    'Skills No Auto Install': '无自动安装选项，请手动安装：',
++    'Skills AI Assist': '让 AI 助手帮我安装',
++    'Skills Details': '详情',
++    'Skills Uninstall': '卸载',
++    'Skills Uninstall Confirm': '确定卸载技能「{{name}}」？',
++    'Skills Installing': '安装中...',
++    'Skills Uninstalling': '卸载中...',
++    'Skills Installed Success': '技能 {{name}} 安装成功',
++    'Skills Uninstalled Success': '已卸载 {{name}}',
++    'Skills Dep Installed': '{{name}} 依赖安装成功',
++    'Skills Install Failed': '安装失败：{{error}}',
++    'Skills Uninstall Failed': '卸载失败：{{error}}',
++    'Skills Load Failed': '加载失败：{{error}}',
++    'Skills Load Failed Hint': '请确认 OpenClaw 已安装并可用。',
++    'Skills Retry': '重试',
++    'Skills Search Placeholder': '搜索技能，如 weather / github / tavily',
++    'Skills Search': '搜索',
++    'Skills Search Empty': '输入关键词搜索社区技能，然后一键安装。',
++    'Skills Search No Results': '没有找到匹配的技能。',
++    'Skills Search Failed': '搜索失败：{{error}}',
++    'Skills Rate Limited': '请求频率超限',
++    'Skills Rate Limit Hint': '建议切换到其他安装源或稍后再试。',
++    'Skills Install': '安装',
++    'Skills Installed Label': '已安装',
++    'Skills Source': '来源：',
++    'Skills Path': '路径：',
++    'Skills Requirements': '依赖要求：',
++    'Skills Install Options': '安装选项：',
++    'Skills SkillHub': 'SkillHub（国内加速）',
++    'Skills ClawHub': 'ClawHub（原版海外）',
++    'Skills Browse': '浏览',
++    'Skills Setup CLI': '安装 CLI',
++    'Skills CLI Not Installed': '请先安装 SkillHub CLI',
++    'Skills CLI Not Installed Hint': '点击上方「安装 CLI」按钮，或切换到 ClawHub 源搜索。',
++    'Skills CLI Installing': '正在安装 SkillHub CLI...',
++    'Skills CLI Install Success': 'SkillHub CLI 安装成功',
++    'Skills CLI Install Failed': 'SkillHub CLI 安装失败：{{error}}',
++    'Skills CLI Version': 'v{{version}}',
++    'Skills CLI Missing': '未安装 CLI',
+     
+     // Setup / Welcome
+     'Welcome to ClawPanel': '欢迎使用 ClawPanel',
+@@ -327,6 +437,116 @@ const translations = {
+     'Action': 'Action',
+     'Wait User': 'Wait User',
+     'Wait Approval': 'Wait Approval',
++
++    // Usage Page
++    'Usage': 'Usage',
++    'Usage Desc': 'Token consumption, API costs, and model usage statistics',
++    'Usage Today': 'Today',
++    'Usage 7 Days': '7 Days',
++    'Usage 30 Days': '30 Days',
++    'Usage Refresh': 'Refresh',
++    'Usage Messages': 'Messages',
++    'Usage User Messages': 'user',
++    'Usage Assistant Messages': 'assistant',
++    'Usage Tool Calls': 'Tool Calls',
++    'Usage Unique Tools': 'unique tools',
++    'Usage Errors': 'Errors',
++    'Usage Error Rate': 'Error rate',
++    'Usage Total Tokens': 'Total Tokens',
++    'Usage Input Tokens': 'input',
++    'Usage Output Tokens': 'output',
++    'Usage Cost': 'Cost',
++    'Usage Input Cost': 'input',
++    'Usage Output Cost': 'output',
++    'Usage Sessions': 'Sessions',
++    'Usage Sessions Desc': 'sessions',
++    'Usage Top Models': 'Top Models',
++    'Usage Top Providers': 'Top Providers',
++    'Usage Top Tools': 'Top Tools',
++    'Usage Top Agents': 'Top Agents',
++    'Usage Top Channels': 'Top Channels',
++    'Usage Unknown': 'Unknown',
++    'Usage Calls': 'calls',
++    'Usage Token Breakdown': 'Token Breakdown',
++    'Usage Output': 'Output',
++    'Usage Input': 'Input',
++    'Usage Cache Read': 'Cache Read',
++    'Usage Cache Write': 'Cache Write',
++    'Usage Daily Usage': 'Daily Usage',
++    'Usage Session Details': 'Session Details',
++    'Usage Recent N': 'Recent {{count}}',
++    'Usage Tokens': 'tokens',
++    'Usage Msgs': 'msgs',
++    'Usage Err': 'err',
++    'Usage No Data': 'No data available',
++    'Usage Load Failed': 'Failed to load',
++    'Usage Connecting': 'Gateway connecting...',
++    'Usage Connecting Hint': 'Usage data will load once gateway connection is ready',
++    'Usage Retry': 'Retry',
++    'Usage Select Company': 'Select a company to view usage.',
++
++    // Skills Page
++    'Skills': 'Skills',
++    'Skills Desc': 'Manage installed skills or search the community for new ones.',
++    'Skills Installed': 'Installed',
++    'Skills Store': 'Search & Install',
++    'Skills Filter': 'Filter skills...',
++    'Skills Refresh': 'Refresh',
++    'Skills Available': 'Available',
++    'Skills Missing Deps': 'Missing Dependencies',
++    'Skills Disabled': 'Disabled',
++    'Skills Blocked': 'Blocked by Allowlist',
++    'Skills Total': '{{count}} skills total',
++    'Skills Summary': '{{available}} available / {{missing}} missing deps / {{disabled}} disabled',
++    'Skills No Skills': 'No skills detected.',
++    'Skills No Skills Hint': 'Make sure OpenClaw is installed. Skills are bundled with OpenClaw or can be placed in ~/.openclaw/skills/.',
++    'Skills CLI Unavailable': 'CLI unavailable — showing local scan results only',
++    'Skills Bundled': 'Bundled',
++    'Skills Custom': 'Custom',
++    'Skills Missing Bins': 'Missing commands:',
++    'Skills Missing Env': 'Missing env vars:',
++    'Skills Missing Env Hint': 'must be set in system environment',
++    'Skills Missing Config': 'Missing config:',
++    'Skills Missing Config Hint': 'must be set in openclaw.json',
++    'Skills No Auto Install': 'No auto-install option. Manual install:',
++    'Skills AI Assist': 'Let AI assistant install',
++    'Skills Details': 'Details',
++    'Skills Uninstall': 'Uninstall',
++    'Skills Uninstall Confirm': 'Are you sure you want to uninstall skill "{{name}}"?',
++    'Skills Installing': 'Installing...',
++    'Skills Uninstalling': 'Uninstalling...',
++    'Skills Installed Success': 'Skill {{name}} installed successfully',
++    'Skills Uninstalled Success': 'Uninstalled {{name}}',
++    'Skills Dep Installed': '{{name}} dependency installed successfully',
++    'Skills Install Failed': 'Install failed: {{error}}',
++    'Skills Uninstall Failed': 'Uninstall failed: {{error}}',
++    'Skills Load Failed': 'Failed to load: {{error}}',
++    'Skills Load Failed Hint': 'Make sure OpenClaw is installed and accessible.',
++    'Skills Retry': 'Retry',
++    'Skills Search Placeholder': 'Search skills, e.g. weather / github / tavily',
++    'Skills Search': 'Search',
++    'Skills Search Empty': 'Enter a keyword to search community skills, then install with one click.',
++    'Skills Search No Results': 'No matching skills found.',
++    'Skills Search Failed': 'Search failed: {{error}}',
++    'Skills Rate Limited': 'Rate limited',
++    'Skills Rate Limit Hint': 'Try switching to a different source or wait a moment.',
++    'Skills Install': 'Install',
++    'Skills Installed Label': 'Installed',
++    'Skills Source': 'Source:',
++    'Skills Path': 'Path:',
++    'Skills Requirements': 'Requirements:',
++    'Skills Install Options': 'Install options:',
++    'Skills SkillHub': 'SkillHub (Accelerated)',
++    'Skills ClawHub': 'ClawHub (Original)',
++    'Skills Browse': 'Browse',
++    'Skills Setup CLI': 'Install CLI',
++    'Skills CLI Not Installed': 'Please install the SkillHub CLI first',
++    'Skills CLI Not Installed Hint': 'Click the "Install CLI" button above, or switch to ClawHub.',
++    'Skills CLI Installing': 'Installing SkillHub CLI...',
++    'Skills CLI Install Success': 'SkillHub CLI installed successfully',
++    'Skills CLI Install Failed': 'SkillHub CLI install failed: {{error}}',
++    'Skills CLI Version': 'v{{version}}',
++    'Skills CLI Missing': 'CLI not installed',
+     
+     // Setup / Welcome
+     'Welcome to ClawPanel': 'Welcome to ClawPanel',
+@@ -496,6 +716,116 @@ const translations = {
+     'Action': 'Aksi',
+     'Wait User': 'Tunggu Pengguna',
+     'Wait Approval': 'Tunggu Setuju',
++
++    // Usage Page
++    'Usage': 'Penggunaan',
++    'Usage Desc': 'Konsumsi token, biaya API, dan statistik penggunaan model',
++    'Usage Today': 'Hari Ini',
++    'Usage 7 Days': '7 Hari',
++    'Usage 30 Days': '30 Hari',
++    'Usage Refresh': 'Segarkan',
++    'Usage Messages': 'Pesan',
++    'Usage User Messages': 'pengguna',
++    'Usage Assistant Messages': 'asisten',
++    'Usage Tool Calls': 'Panggilan Alat',
++    'Usage Unique Tools': 'alat unik',
++    'Usage Errors': 'Kesalahan',
++    'Usage Error Rate': 'Tingkat kesalahan',
++    'Usage Total Tokens': 'Total Token',
++    'Usage Input Tokens': 'masuk',
++    'Usage Output Tokens': 'keluar',
++    'Usage Cost': 'Biaya',
++    'Usage Input Cost': 'masuk',
++    'Usage Output Cost': 'keluar',
++    'Usage Sessions': 'Sesi',
++    'Usage Sessions Desc': 'sesi',
++    'Usage Top Models': 'Model Teratas',
++    'Usage Top Providers': 'Penyedia Teratas',
++    'Usage Top Tools': 'Alat Teratas',
++    'Usage Top Agents': 'Agen Teratas',
++    'Usage Top Channels': 'Kanal Teratas',
++    'Usage Unknown': 'Tidak Diketahui',
++    'Usage Calls': 'panggilan',
++    'Usage Token Breakdown': 'Rincian Token',
++    'Usage Output': 'Keluaran',
++    'Usage Input': 'Masukan',
++    'Usage Cache Read': 'Baca Cache',
++    'Usage Cache Write': 'Tulis Cache',
++    'Usage Daily Usage': 'Penggunaan Harian',
++    'Usage Session Details': 'Detail Sesi',
++    'Usage Recent N': 'Terbaru {{count}}',
++    'Usage Tokens': 'token',
++    'Usage Msgs': 'pesan',
++    'Usage Err': 'galat',
++    'Usage No Data': 'Tidak ada data tersedia',
++    'Usage Load Failed': 'Gagal memuat',
++    'Usage Connecting': 'Menghubungkan ke gateway...',
++    'Usage Connecting Hint': 'Data penggunaan akan dimuat setelah koneksi gateway siap',
++    'Usage Retry': 'Coba Lagi',
++    'Usage Select Company': 'Pilih perusahaan untuk melihat penggunaan.',
++
++    // Skills Page
++    'Skills': 'Skill',
++    'Skills Desc': 'Kelola skill yang terinstal atau cari dari komunitas.',
++    'Skills Installed': 'Terinstal',
++    'Skills Store': 'Cari & Instal',
++    'Skills Filter': 'Filter skill...',
++    'Skills Refresh': 'Segarkan',
++    'Skills Available': 'Tersedia',
++    'Skills Missing Deps': 'Ketergantungan Kurang',
++    'Skills Disabled': 'Dinonaktifkan',
++    'Skills Blocked': 'Diblokir Daftar Putih',
++    'Skills Total': '{{count}} skill total',
++    'Skills Summary': '{{available}} tersedia / {{missing}} kurang dep / {{disabled}} dinonaktifkan',
++    'Skills No Skills': 'Tidak ada skill terdeteksi.',
++    'Skills No Skills Hint': 'Pastikan OpenClaw terinstal. Skill dibundel bersama OpenClaw atau dapat ditempatkan di ~/.openclaw/skills/.',
++    'Skills CLI Unavailable': 'CLI tidak tersedia — hanya menampilkan hasil pemindaian lokal',
++    'Skills Bundled': 'Dibundel',
++    'Skills Custom': 'Kustom',
++    'Skills Missing Bins': 'Perintah kurang:',
++    'Skills Missing Env': 'Variabel lingkungan kurang:',
++    'Skills Missing Env Hint': 'harus diatur di variabel lingkungan sistem',
++    'Skills Missing Config': 'Konfigurasi kurang:',
++    'Skills Missing Config Hint': 'harus diatur di openclaw.json',
++    'Skills No Auto Install': 'Tidak ada opsi instal otomatis. Instal manual:',
++    'Skills AI Assist': 'Biarkan AI asisten menginstal',
++    'Skills Details': 'Detail',
++    'Skills Uninstall': 'Hapus Instal',
++    'Skills Uninstall Confirm': 'Yakin ingin menghapus skill "{{name}}"?',
++    'Skills Installing': 'Menginstal...',
++    'Skills Uninstalling': 'Menghapus...',
++    'Skills Installed Success': 'Skill {{name}} berhasil diinstal',
++    'Skills Uninstalled Success': '{{name}} dihapus',
++    'Skills Dep Installed': 'Dependensi {{name}} berhasil diinstal',
++    'Skills Install Failed': 'Gagal instal: {{error}}',
++    'Skills Uninstall Failed': 'Gagal hapus: {{error}}',
++    'Skills Load Failed': 'Gagal memuat: {{error}}',
++    'Skills Load Failed Hint': 'Pastikan OpenClaw terinstal dan dapat diakses.',
++    'Skills Retry': 'Coba Lagi',
++    'Skills Search Placeholder': 'Cari skill, misal weather / github / tavily',
++    'Skills Search': 'Cari',
++    'Skills Search Empty': 'Masukkan kata kunci untuk mencari skill komunitas, lalu instal dengan satu klik.',
++    'Skills Search No Results': 'Tidak ada skill yang cocok.',
++    'Skills Search Failed': 'Gagal mencari: {{error}}',
++    'Skills Rate Limited': 'Batas kecepatan',
++    'Skills Rate Limit Hint': 'Coba beralih ke sumber lain atau tunggu sebentar.',
++    'Skills Install': 'Instal',
++    'Skills Installed Label': 'Terinstal',
++    'Skills Source': 'Sumber:',
++    'Skills Path': 'Jalur:',
++    'Skills Requirements': 'Persyaratan:',
++    'Skills Install Options': 'Opsi instal:',
++    'Skills SkillHub': 'SkillHub (Dipercepat)',
++    'Skills ClawHub': 'ClawHub (Asli)',
++    'Skills Browse': 'Jelajahi',
++    'Skills Setup CLI': 'Instal CLI',
++    'Skills CLI Not Installed': 'Silakan instal SkillHub CLI terlebih dahulu',
++    'Skills CLI Not Installed Hint': 'Klik tombol "Instal CLI" di atas, atau beralih ke ClawHub.',
++    'Skills CLI Installing': 'Menginstal SkillHub CLI...',
++    'Skills CLI Install Success': 'SkillHub CLI berhasil diinstal',
++    'Skills CLI Install Failed': 'Gagal instal SkillHub CLI: {{error}}',
++    'Skills CLI Version': 'v{{version}}',
++    'Skills CLI Missing': 'CLI tidak terinstal',
+     
+     // Setup / Welcome
+     'Welcome to ClawPanel': 'Selamat Datang di ClawPanel',
+@@ -553,7 +883,121 @@ const translations = {
+     'Workflow Center': 'Центр воркфлоу',
+     'Loading...': 'Загрузка...',
+     'Success': 'Успех',
+-    'Error': 'Ошибка'
++    'Error': 'Ошибка',
++    'Warning': 'Предупреждение',
++    'Connection Lost': 'Соединение разорвано',
++    'Gateway Connecting...': 'Подключение к Gateway...',
++    'Waiting for Gateway...': 'Ожидание подключения к Gateway...',
++
++    // Usage Page
++    'Usage': 'Использование',
++    'Usage Desc': 'Потребление токенов, стоимость API и статистика использования модели',
++    'Usage Today': 'Сегодня',
++    'Usage 7 Days': '7 Дней',
++    'Usage 30 Days': '30 Дней',
++    'Usage Refresh': 'Обновить',
++    'Usage Messages': 'Сообщения',
++    'Usage User Messages': 'пользователь',
++    'Usage Assistant Messages': 'ассистент',
++    'Usage Tool Calls': 'Вызовы инструментов',
++    'Usage Unique Tools': 'уникальных инструментов',
++    'Usage Errors': 'Ошибки',
++    'Usage Error Rate': 'Частота ошибок',
++    'Usage Total Tokens': 'Всего токенов',
++    'Usage Input Tokens': 'ввод',
++    'Usage Output Tokens': 'вывод',
++    'Usage Cost': 'Стоимость',
++    'Usage Input Cost': 'ввод',
++    'Usage Output Cost': 'вывод',
++    'Usage Sessions': 'Сессии',
++    'Usage Sessions Desc': 'сессий',
++    'Usage Top Models': 'Популярные модели',
++    'Usage Top Providers': 'Популярные провайдеры',
++    'Usage Top Tools': 'Популярные инструменты',
++    'Usage Top Agents': 'Популярные агенты',
++    'Usage Top Channels': 'Популярные каналы',
++    'Usage Unknown': 'Неизвестно',
++    'Usage Calls': 'вызовов',
++    'Usage Token Breakdown': 'Разбивка токенов',
++    'Usage Output': 'Вывод',
++    'Usage Input': 'Ввод',
++    'Usage Cache Read': 'Чтение кэша',
++    'Usage Cache Write': 'Запись кэша',
++    'Usage Daily Usage': 'Ежедневное использование',
++    'Usage Session Details': 'Детали сессий',
++    'Usage Recent N': 'Последние {{count}}',
++    'Usage Tokens': 'токенов',
++    'Usage Msgs': 'сообщений',
++    'Usage Err': 'ошибок',
++    'Usage No Data': 'Нет данных',
++    'Usage Load Failed': 'Ошибка загрузки',
++    'Usage Connecting': 'Подключение к gateway...',
++    'Usage Connecting Hint': 'Данные загрузятся после подключения к gateway',
++    'Usage Retry': 'Повторить',
++    'Usage Select Company': 'Выберите компанию для просмотра использования.',
++
++    // Skills Page
++    'Skills': 'Навыки',
++    'Skills Desc': 'Управление установленными навыками или поиск в сообществе.',
++    'Skills Installed': 'Установлено',
++    'Skills Store': 'Поиск и установка',
++    'Skills Filter': 'Фильтр навыков...',
++    'Skills Refresh': 'Обновить',
++    'Skills Available': 'Доступно',
++    'Skills Missing Deps': 'Отсутствуют зависимости',
++    'Skills Disabled': 'Отключено',
++    'Skills Blocked': 'Заблокировано белым списком',
++    'Skills Total': 'Всего {{count}} навыков',
++    'Skills Summary': '{{available}} доступно / {{missing}} нет зависимостей / {{disabled}} отключено',
++    'Skills No Skills': 'Навыки не обнаружены.',
++    'Skills No Skills Hint': 'Убедитесь, что OpenClaw установлен. Навыки поставляются с OpenClaw или могут быть размещены в ~/.openclaw/skills/.',
++    'Skills CLI Unavailable': 'CLI недоступен — показаны только результаты локального сканирования',
++    'Skills Bundled': 'В комплекте',
++    'Skills Custom': 'Пользовательский',
++    'Skills Missing Bins': 'Отсутствуют команды:',
++    'Skills Missing Env': 'Отсутствуют переменные окружения:',
++    'Skills Missing Env Hint': 'должны быть установлены в системном окружении',
++    'Skills Missing Config': 'Отсутствует конфигурация:',
++    'Skills Missing Config Hint': 'должна быть установлена в openclaw.json',
++    'Skills No Auto Install': 'Нет опции автоустановки. Ручная установка:',
++    'Skills AI Assist': 'Позволить AI-ассистенту установить',
++    'Skills Details': 'Подробности',
++    'Skills Uninstall': 'Удалить',
++    'Skills Uninstall Confirm': 'Вы уверены, что хотите удалить навык "{{name}}"?',
++    'Skills Installing': 'Установка...',
++    'Skills Uninstalling': 'Удаление...',
++    'Skills Installed Success': 'Навык {{name}} успешно установлен',
++    'Skills Uninstalled Success': '{{name}} удалён',
++    'Skills Dep Installed': 'Зависимость {{name}} успешно установлена',
++    'Skills Install Failed': 'Ошибка установки: {{error}}',
++    'Skills Uninstall Failed': 'Ошибка удаления: {{error}}',
++    'Skills Load Failed': 'Ошибка загрузки: {{error}}',
++    'Skills Load Failed Hint': 'Убедитесь, что OpenClaw установлен и доступен.',
++    'Skills Retry': 'Повторить',
++    'Skills Search Placeholder': 'Поиск навыков, например weather / github / tavily',
++    'Skills Search': 'Поиск',
++    'Skills Search Empty': 'Введите ключевое слово для поиска навыков сообщества, затем установите одним кликом.',
++    'Skills Search No Results': 'Совпадающие навыки не найдены.',
++    'Skills Search Failed': 'Ошибка поиска: {{error}}',
++    'Skills Rate Limited': 'Лимит запросов',
++    'Skills Rate Limit Hint': 'Попробуйте переключиться на другой источник или подождать.',
++    'Skills Install': 'Установить',
++    'Skills Installed Label': 'Установлено',
++    'Skills Source': 'Источник:',
++    'Skills Path': 'Путь:',
++    'Skills Requirements': 'Требования:',
++    'Skills Install Options': 'Опции установки:',
++    'Skills SkillHub': 'SkillHub (Ускоренный)',
++    'Skills ClawHub': 'ClawHub (Оригинальный)',
++    'Skills Browse': 'Обзор',
++    'Skills Setup CLI': 'Установить CLI',
++    'Skills CLI Not Installed': 'Пожалуйста, сначала установите SkillHub CLI',
++    'Skills CLI Not Installed Hint': 'Нажмите кнопку "Установить CLI" выше или переключитесь на ClawHub.',
++    'Skills CLI Installing': 'Установка SkillHub CLI...',
++    'Skills CLI Install Success': 'SkillHub CLI успешно установлен',
++    'Skills CLI Install Failed': 'Ошибка установки SkillHub CLI: {{error}}',
++    'Skills CLI Version': 'v{{version}}',
++    'Skills CLI Missing': 'CLI не установлен'
+   }
+ }
+ 
+diff --git a/src/lib/tauri-api.js b/src/lib/tauri-api.js
+index 0b80548..69f5b00 100644
+--- a/src/lib/tauri-api.js
++++ b/src/lib/tauri-api.js
+@@ -296,9 +296,22 @@ export const api = {
+   loadImage: (id) => invoke('assistant_load_image', { id }),
+   deleteImage: (id) => invoke('assistant_delete_image', { id }),
+ 
++  // 使用情况
++  usageGet: (startDate, endDate) => invoke('usage_get', { startDate, endDate }),
++
+   // 工作流中心
+   workflowSettingsGet: () => cachedInvoke('workflow_settings_get', {}, 10000),
+   workflowSettingsSave: (settings) => { invalidate('workflow_settings_get'); return invoke('workflow_settings_save', { settings }) },
+   workflowTemplateList: () => cachedInvoke('workflow_template_list', {}, 30000),
+-  workflowRunList: () => cachedInvoke('workflow_run_list', {}, 5000),
++  workflowTemplateGet: (id) => invoke('workflow_template_get', { id }),
++  workflowTemplateCreate: (name, description, steps) => { invalidate('workflow_template_list'); return invoke('workflow_template_create', { name, description, steps }) },
++  workflowTemplateUpdate: (id, name, description, steps) => { invalidate('workflow_template_list'); return invoke('workflow_template_update', { id, name, description, steps }) },
++  workflowTemplateDelete: (id) => { invalidate('workflow_template_list'); return invoke('workflow_template_delete', { id }) },
++  workflowRunList: (status) => cachedInvoke('workflow_run_list', { status: status || null }, 5000),
++  workflowRunGet: (id) => invoke('workflow_run_get', { id }),
++  workflowRunStart: (templateId, title) => { invalidate('workflow_run_list'); return invoke('workflow_run_start', { templateId, title }) },
++  workflowRunStop: (id) => { invalidate('workflow_run_list'); return invoke('workflow_run_stop', { id }) },
++  workflowRunPause: (id) => { invalidate('workflow_run_list'); return invoke('workflow_run_pause', { id }) },
++  workflowRunResume: (id) => { invalidate('workflow_run_list'); return invoke('workflow_run_resume', { id }) },
++  workflowLogList: (runId) => invoke('workflow_log_list', { runId }),
+ }
+diff --git a/src/pages/settings.js b/src/pages/settings.js
+index 123d5c7..24549ad 100644
+--- a/src/pages/settings.js
++++ b/src/pages/settings.js
+@@ -42,10 +42,16 @@ export async function render() {
+       <div class="config-section-title">npm 源设置</div>
+       <div id="registry-bar"><div class="stat-card loading-placeholder" style="height:48px"></div></div>
+     </div>
++
++    <div class="config-section" id="sync-section">
++      <div class="config-section-title">面板更新</div>
++      <div id="sync-bar"><div class="stat-card loading-placeholder" style="height:48px"></div></div>
++    </div>
+   `
+ 
+   bindEvents(page)
+   loadAll(page)
++  loadSyncStatus(page)
+   return page
+ }
+ 
+@@ -164,6 +170,9 @@ function bindEvents(page) {
+         case 'save-registry':
+           await handleSaveRegistry(page)
+           break
++        case 'sync-upstream':
++          await handleSyncUpstream(page)
++          break
+       }
+     } catch (e) {
+       toast(e.toString(), 'error')
+@@ -244,3 +253,74 @@ async function handleSaveRegistry(page) {
+   await api.setNpmRegistry(registry)
+   toast('npm 源已保存', 'success')
+ }
++
++async function loadSyncStatus(page) {
++  const bar = page.querySelector('#sync-bar')
++  if (!bar) return
++  try {
++    const state = await api.panelSyncStatus()
++    renderSyncPanel(bar, state, page)
++  } catch (e) {
++    bar.innerHTML = `<div class="form-hint" style="color:var(--text-tertiary)">Sync status unavailable</div>`
++  }
++}
++
++function renderSyncPanel(bar, state, page) {
++  const isRunning = state.status === 'running'
++  const isError = state.status === 'error'
++  const statusLabel = state.status === 'idle' ? 'Ready' : state.status === 'running' ? 'Syncing...' : state.status === 'success' ? 'Done' : 'Error'
++  const logLines = (state.log || []).slice(-5)
++
++  bar.innerHTML = `
++    <div class="sync-status">
++      <div class="sync-status-header">
++        <div class="sync-status-info">
++          <span class="sync-dot ${state.status === 'running' ? 'syncing' : state.status === 'error' ? 'error' : 'idle'}"></span>
++          <span style="font-weight:600;font-size:var(--font-size-sm)">${statusLabel}</span>
++          <span style="font-size:var(--font-size-xs);color:var(--text-tertiary);margin-left:8px">${state.message || ''}</span>
++        </div>
++        <div class="sync-actions">
++          ${isRunning ? `
++            <button class="btn btn-sm btn-secondary" disabled>
++              <span class="btn-spinner"></span>
++              Syncing...
++            </button>
++          ` : `
++            <button class="btn btn-sm btn-primary" data-action="sync-upstream">
++              Sync from Upstream
++            </button>
++          `}
++        </div>
++      </div>
++      ${state.progress > 0 && state.progress < 100 ? `
++        <div class="sync-progress">
++          <div class="sync-progress-fill" style="width:${state.progress}%"></div>
++        </div>
++      ` : ''}
++      ${logLines.length > 0 ? `
++        <div class="sync-log">
++          ${logLines.map(l => `<div class="sync-log-line">${escapeHtml(l)}</div>`).join('')}
++        </div>
++      ` : ''}
++      <div class="form-hint" style="margin-top:var(--space-xs)">
++        Sync pulls from qingchencloud/clawpanel + reapplies patches. Restart server after sync.
++      </div>
++    </div>
++  `
++
++  if (isRunning) {
++    setTimeout(() => loadSyncStatus(page), 3000)
++  }
++}
++
++async function handleSyncUpstream(page) {
++  const bar = page.querySelector('#sync-bar')
++  const btn = bar?.querySelector('[data-action="sync-upstream"]')
++  if (btn) btn.disabled = true
++  try {
++    await api.panelSyncUpstream()
++    loadSyncStatus(page)
++  } catch (e) {
++    toast('Sync failed: ' + e.message, 'error')
++  }
++}
+diff --git a/src/style/components.css b/src/style/components.css
+index 8510e1b..c8b143e 100644
+--- a/src/style/components.css
++++ b/src/style/components.css
+@@ -295,6 +295,61 @@ mark {
+   flex-direction: column;
+   box-shadow: var(--shadow-lg);
+ }
++
++.modal-content {
++  background: var(--bg-secondary);
++  border: 1px solid var(--border-primary);
++  border-radius: var(--radius-xl);
++  box-shadow: var(--shadow-lg);
++  max-height: calc(100vh - 60px);
++  display: flex;
++  flex-direction: column;
++  overflow: hidden;
++}
++
++.modal-header {
++  display: flex;
++  align-items: center;
++  justify-content: space-between;
++  padding: var(--space-lg);
++  border-bottom: 1px solid var(--border-primary);
++  flex-shrink: 0;
++}
++
++.modal-header h3 {
++  font-size: var(--font-size-lg);
++  font-weight: 600;
++  margin: 0;
++}
++
++.modal-close {
++  background: none;
++  border: none;
++  font-size: 24px;
++  cursor: pointer;
++  color: var(--text-tertiary);
++  padding: 0;
++  line-height: 1;
++  transition: color 0.15s;
++}
++.modal-close:hover { color: var(--text-primary); }
++
++.modal-body {
++  flex: 1;
++  overflow-y: auto;
++  padding: var(--space-lg);
++  min-height: 0;
++}
++
++.modal-footer {
++  display: flex;
++  justify-content: flex-end;
++  gap: var(--space-sm);
++  padding: var(--space-lg);
++  border-top: 1px solid var(--border-primary);
++  flex-shrink: 0;
++}
++
+ .modal-body,
+ .modal-content-body {
+   flex: 1;
+diff --git a/src/style/pages.css b/src/style/pages.css
+index 12722cb..0f8b42c 100644
+--- a/src/style/pages.css
++++ b/src/style/pages.css
+@@ -1280,6 +1280,9 @@
+ .run-badge.running { background: rgba(37,99,235,0.15); color: #2563eb; }
+ .run-badge.completed { background: rgba(34,197,94,0.15); color: #16a34a; }
+ .run-badge.failed { background: rgba(239,68,68,0.15); color: #ef4444; }
++.run-badge.waiting { background: rgba(234,179,8,0.15); color: #ca8a04; }
++.run-badge.paused { background: rgba(107,114,128,0.15); color: #6b7280; }
++.run-badge.stopped { background: rgba(107,114,128,0.15); color: #6b7280; }
+ 
+ .run-title {
+   font-weight: 600;
+@@ -1307,3 +1310,16 @@
+   background: var(--accent);
+   transition: width 0.3s ease;
+ }
++
++.run-log-container {
++  max-height: 300px;
++  overflow-y: auto;
++  background: var(--bg-card);
++  border: 1px solid var(--border-primary);
++  border-radius: var(--radius-md);
++  padding: var(--space-sm);
++  font-family: var(--font-mono);
++  font-size: 11px;
++}
++
++.cursor-pointer { cursor: pointer; }
