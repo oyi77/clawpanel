@@ -1,0 +1,28 @@
+diff --git a/src/lib/tauri-api.js b/src/lib/tauri-api.js
+index 0b80548..69f5b00 100644
+--- a/src/lib/tauri-api.js
++++ b/src/lib/tauri-api.js
+@@ -296,9 +296,22 @@ export const api = {
+   loadImage: (id) => invoke('assistant_load_image', { id }),
+   deleteImage: (id) => invoke('assistant_delete_image', { id }),
+ 
++  // 使用情况
++  usageGet: (startDate, endDate) => invoke('usage_get', { startDate, endDate }),
++
+   // 工作流中心
+   workflowSettingsGet: () => cachedInvoke('workflow_settings_get', {}, 10000),
+   workflowSettingsSave: (settings) => { invalidate('workflow_settings_get'); return invoke('workflow_settings_save', { settings }) },
+   workflowTemplateList: () => cachedInvoke('workflow_template_list', {}, 30000),
+-  workflowRunList: () => cachedInvoke('workflow_run_list', {}, 5000),
++  workflowTemplateGet: (id) => invoke('workflow_template_get', { id }),
++  workflowTemplateCreate: (name, description, steps) => { invalidate('workflow_template_list'); return invoke('workflow_template_create', { name, description, steps }) },
++  workflowTemplateUpdate: (id, name, description, steps) => { invalidate('workflow_template_list'); return invoke('workflow_template_update', { id, name, description, steps }) },
++  workflowTemplateDelete: (id) => { invalidate('workflow_template_list'); return invoke('workflow_template_delete', { id }) },
++  workflowRunList: (status) => cachedInvoke('workflow_run_list', { status: status || null }, 5000),
++  workflowRunGet: (id) => invoke('workflow_run_get', { id }),
++  workflowRunStart: (templateId, title) => { invalidate('workflow_run_list'); return invoke('workflow_run_start', { templateId, title }) },
++  workflowRunStop: (id) => { invalidate('workflow_run_list'); return invoke('workflow_run_stop', { id }) },
++  workflowRunPause: (id) => { invalidate('workflow_run_list'); return invoke('workflow_run_pause', { id }) },
++  workflowRunResume: (id) => { invalidate('workflow_run_list'); return invoke('workflow_run_resume', { id }) },
++  workflowLogList: (runId) => invoke('workflow_log_list', { runId }),
+ }
