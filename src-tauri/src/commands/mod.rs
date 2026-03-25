@@ -21,6 +21,7 @@ pub mod pairing;
 pub mod service;
 pub mod skills;
 pub mod update;
+pub mod workflow;
 
 /// 默认 OpenClaw 配置目录（ClawPanel 自身配置始终在此）
 fn default_openclaw_dir() -> PathBuf {

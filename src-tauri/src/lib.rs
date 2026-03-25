@@ -5,7 +5,7 @@ mod utils;
 
 use commands::{
     agent, assistant, config, device, extensions, logs, memory, messaging, pairing, service,
-    skills, update,
+    skills, update, workflow,
 };
 
 pub fn run() {
@@ -58,6 +58,7 @@ pub fn run() {
         .setup(|app| {
             service::start_backend_guardian(app.handle().clone());
             tray::setup_tray(app.handle())?;
+            app.manage(workflow::WorkflowState::new());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -193,6 +194,20 @@ pub fn run() {
             update::download_frontend_update,
             update::rollback_frontend_update,
             update::get_update_status,
+            workflow::workflow_settings_get,
+            workflow::workflow_settings_save,
+            workflow::workflow_template_list,
+            workflow::workflow_template_get,
+            workflow::workflow_template_create,
+            workflow::workflow_template_update,
+            workflow::workflow_template_delete,
+            workflow::workflow_run_list,
+            workflow::workflow_run_get,
+            workflow::workflow_run_start,
+            workflow::workflow_run_stop,
+            workflow::workflow_run_pause,
+            workflow::workflow_run_resume,
+            workflow::workflow_log_list,
         ])
         .on_window_event(|window, event| {
             // 关闭窗口时最小化到托盘，不退出应用
