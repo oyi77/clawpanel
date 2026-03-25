@@ -514,6 +514,34 @@ curl -fsSL https://raw.githubusercontent.com/qingchencloud/clawpanel/main/script
 
 ---
 
+## 致谢名单维护
+
+README 中的“致谢 / Acknowledgements”用于展示历史代码贡献者和社区反馈者。
+
+维护建议：
+
+1. **代码贡献者来源**：优先统计仓库历史 PR 作者
+2. **社区反馈者来源**：从 GitHub Issues 的作者中筛选活跃反馈者
+3. **中文英文同步**：修改 `README.md` 后，同步更新 `README.en.md`
+4. **避免混入无关改动**：提交前只 stage 文档文件，不要把工作区里其他实验文件一起带上
+
+常用命令：
+
+```bash
+gh pr list --repo qingchencloud/clawpanel --state all --limit 200 --json author,number,title,state
+gh issue list --repo qingchencloud/clawpanel --state all --limit 200 --json author,number,title
+```
+
+推荐提交流程：
+
+```bash
+git add README.md README.en.md CONTRIBUTING.md
+git commit -m "docs: add contributor acknowledgements"
+git push origin main
+```
+
+---
+
 ## 代码规范
 
 - **前端**：使用 Vanilla JS，不引入第三方框架

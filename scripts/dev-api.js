@@ -1536,7 +1536,15 @@ const handlers = {
       if (isMac) {
         cliInstalled = fs.existsSync('/opt/homebrew/bin/openclaw') || fs.existsSync('/usr/local/bin/openclaw')
       } else if (isWindows) {
-        try { cliInstalled = fs.existsSync(path.join(process.env.APPDATA || '', 'npm', 'openclaw.cmd')) }
+        try {
+          const paths = [
+            path.join(process.env.APPDATA || '', 'npm', 'openclaw.cmd'),
+            path.join(process.env.APPDATA || '', 'npm', 'openclaw'),
+            path.join(process.env.ProgramFiles || '', 'nodejs', 'openclaw.cmd'),
+            path.join(process.env.ProgramFiles || '', 'nodejs', 'openclaw'),
+          ]
+          cliInstalled = paths.some(p => fs.existsSync(p)) || !!findOpenclawBin()
+        }
         catch { cliInstalled = false }
       } else {
         cliInstalled = !!findOpenclawBin()
@@ -1768,7 +1776,7 @@ const handlers = {
   install_qqbot_plugin() {
     const bin = findOpenclawBin() || 'openclaw'
     try {
-      execSync(`${bin} plugins install @sliverp/qqbot@latest`, { timeout: 60000, cwd: homedir() })
+      execSync(`${bin} plugins install @tencent-connect/openclaw-qqbot@latest`, { timeout: 600000, cwd: homedir() })
       return '安装成功'
     } catch (e) {
       throw new Error('QQBot 插件安装失败: ' + (e.message || e))
@@ -2935,6 +2943,24 @@ const handlers = {
     const current = getLocalOpenclawVersion()
     const latest = await getLatestVersionFor(source)
     const recommended = recommendedVersionFor(source)
+
+    // CLI 路径解析（Web 模式下用 which/where）
+    let cli_path = null
+    let cli_source = null
+    try {
+      const { execSync } = require('child_process')
+      const cmd = process.platform === 'win32' ? 'where openclaw' : 'which openclaw'
+      const out = execSync(cmd, { timeout: 3000 }).toString().trim()
+      cli_path = out.split('\n')[0]?.trim() || null
+      if (cli_path) {
+        const lower = cli_path.replace(/\\/g, '/').toLowerCase()
+        if (lower.includes('/programs/openclaw/') || lower.includes('/openclaw-bin/') || lower.includes('/opt/openclaw/')) cli_source = 'standalone'
+        else if (lower.includes('openclaw-zh') || lower.includes('@qingchencloud')) cli_source = 'npm-zh'
+        else if (lower.includes('/npm/') || lower.includes('/node_modules/')) cli_source = 'npm-official'
+        else cli_source = 'unknown'
+      }
+    } catch {}
+
     return {
       current,
       latest,
@@ -2944,7 +2970,10 @@ const handlers = {
       is_recommended: !!current && !!recommended && versionsMatch(current, recommended),
       ahead_of_recommended: !!current && !!recommended && recommendedIsNewer(current, recommended),
       panel_version: PANEL_VERSION,
-      source
+      source,
+      cli_path,
+      cli_source,
+      all_installations: null
     }
   },
 
@@ -3116,6 +3145,75 @@ const handlers = {
       } catch {}
     }
     return result
+  },
+
+  // Agent 渠道绑定管理
+  list_all_bindings() {
+    const cfg = readConfig()
+    const bindings = cfg.bindings || []
+    return { bindings }
+  },
+
+  save_agent_binding({ agentId, channel, accountId, bindingConfig }) {
+    const cfg = readConfig()
+    if (!cfg.bindings) cfg.bindings = []
+    const bindings = cfg.bindings
+
+    // 构建新绑定
+    const newBinding = {
+      type: 'route',
+      agentId,
+      match: {
+        channel,
+        ...(accountId ? { accountId } : {}),
+      },
+    }
+
+    // 合并 peer 配置到 match
+    if (bindingConfig && typeof bindingConfig === 'object') {
+      if (bindingConfig.peer) {
+        newBinding.match.peer = bindingConfig.peer
+      }
+    }
+
+    // 查找并更新现有绑定（相同 agentId + channel + accountId）
+    const accountKey = accountId || ''
+    let found = false
+    for (let i = 0; i < bindings.length; i++) {
+      const b = bindings[i]
+      if (b.agentId === agentId && b.match?.channel === channel) {
+        const existingAccount = b.match?.accountId || ''
+        if (existingAccount === accountKey) {
+          bindings[i] = newBinding
+          found = true
+          break
+        }
+      }
+    }
+    if (!found) {
+      bindings.push(newBinding)
+    }
+
+    saveConfig(cfg)
+    return { ok: true }
+  },
+
+  delete_agent_binding({ agentId, channel, accountId }) {
+    const cfg = readConfig()
+    if (!cfg.bindings) cfg.bindings = []
+    const bindings = cfg.bindings
+    const accountKey = accountId || ''
+
+    const before = bindings.length
+    cfg.bindings = bindings.filter(b => {
+      if (b.agentId !== agentId) return true
+      if (b.match?.channel !== channel) return true
+      const existingAccount = b.match?.accountId || ''
+      return existingAccount !== accountKey
+    })
+
+    saveConfig(cfg)
+    return { ok: true, removed: before - cfg.bindings.length }
   },
 
   // 记忆文件

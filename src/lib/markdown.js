@@ -25,7 +25,7 @@ function highlightCode(code, lang) {
     .replace(/\b(\d+\.?\d*)\b/g, `${S}0${E}$1${S}c${E}`)
     .replace(/(\/\/.*$|#.*$)/gm, `${S}1${E}$1${S}c${E}`)
     .replace(/(\/\*[\s\S]*?\*\/)/g, `${S}1${E}$1${S}c${E}`)
-    .replace(/(&quot;(?:[^&]|&(?!quot;))*?&quot;|&#x27;(?:[^&]|&(?!#x27;))*?&#x27;|`[^`]*`)/g,
+    .replace(/(&quot;(?:[^&]|&(?!quot;))*?&quot;|'[^'\n]*'|`[^`]*`)/g,
       `${S}2${E}$1${S}c${E}`)
     .replace(/\b([A-Z][a-zA-Z0-9_]*)\b/g, (m, w) =>
       KEYWORDS.has(w) ? m : `${S}3${E}${w}${S}c${E}`)
@@ -43,7 +43,6 @@ function escapeHtml(str) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#x27;')
 }
 
 // 预加载 Tauri convertFileSrc
@@ -90,6 +89,8 @@ export function renderMarkdown(text) {
   const result = []
   let inList = false
   let listType = ''
+  let inTable = false
+  let tableRows = []
 
   for (let i = 0; i < lines.length; i++) {
     let line = lines[i]
@@ -99,6 +100,38 @@ export function renderMarkdown(text) {
       result.push(line)
       while (i < lines.length - 1 && !lines[i].includes('</pre>')) { i++; result.push(lines[i]) }
       continue
+    }
+
+    // 表格检测：表头分隔行 (|---|...|)
+    const isTableSeparator = /^\s*\|[\s\-:|]+\|\s*$/.test(line) || 
+                             /^\s*[\-:]+(\s*\|\s*[\-:]+)+\s*$/.test(line)
+    
+    // 检测是否可能是表格行
+    const isTableRow = /^\s*\|.*\|\s*$/.test(line) || 
+                       /^\s*[^\|]+\s*\|\s*[^\|]+/.test(line)
+    
+    // 如果在表格中，继续收集行
+    if (inTable) {
+      if (isTableRow && line.trim() !== '') {
+        tableRows.push(line)
+        continue
+      } else {
+        // 表格结束，渲染表格
+        result.push(renderTable(tableRows))
+        inTable = false
+        tableRows = []
+      }
+    }
+    
+    // 检测表格开始：当前行是表格行，且下一行是分隔行
+    if (!inTable && isTableRow && i + 1 < lines.length) {
+      const nextLine = lines[i + 1]
+      if (/^\s*\|[\s\-:|]+\|\s*$/.test(nextLine) || 
+          /^\s*[\-:]+(\s*\|\s*[\-:]+)+\s*$/.test(nextLine)) {
+        inTable = true
+        tableRows.push(line)
+        continue
+      }
     }
 
     // 标题
@@ -139,7 +172,67 @@ export function renderMarkdown(text) {
   }
 
   if (inList) result.push(`</${listType}>`)
+  // 处理剩余的表格
+  if (inTable && tableRows.length > 0) {
+    result.push(renderTable(tableRows))
+  }
   return result.join('\n')
+}
+
+/**
+ * 渲染 Markdown 表格
+ * @param {string[]} rows - 表格行数组
+ * @returns {string} HTML 表格
+ */
+function renderTable(rows) {
+  if (!rows || rows.length < 2) return ''
+  
+  const table = ['<table>']
+  let isHeaderRow = true
+  let hasSeparator = false
+  
+  for (let i = 0; i < rows.length; i++) {
+    let row = rows[i].trim()
+    
+    // 跳过空行
+    if (!row) continue
+    // 检测分隔行 (|---|...|)
+    const isSeparator = /^\s*\|[\s\-:|]+\|\s*$/.test(row) || 
+                        /^\s*[\-:]+(\s*\|\s*[\-:]+)+\s*$/.test(row)
+    if (isSeparator) {
+      hasSeparator = true
+      continue
+    }
+    
+    // 解析单元格
+    let cells = []
+    if (row.startsWith('|') && row.endsWith('|')) {
+      // 标准格式: | cell1 | cell2 |
+      cells = row.slice(1, -1).split('|')
+    } else {
+      // 简化格式: cell1 | cell2
+      cells = row.split('|')
+    }
+    // 清理单元格内容
+    cells = cells.map(cell => inlineFormat(cell.trim()))
+    if (cells.length === 0) continue
+    
+    // 渲染行
+    const tag = isHeaderRow && !hasSeparator && i === 0 ? 'th' : 'td'
+    table.push('  <tr>')
+    cells.forEach(cell => {
+      table.push(`    <${tag}>${cell}</${tag}>`)
+    })
+    table.push('  </tr>')
+    
+    // 第一行后切换到数据行（如果有分隔行）
+    if (hasSeparator && i === 0) {
+      isHeaderRow = false
+    }
+  }
+  
+  table.push('</table>')
+  return table.join('\n')
 }
 
 function inlineFormat(text) {
@@ -147,10 +240,12 @@ function inlineFormat(text) {
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/\*(.+?)\*/g, '<em>$1</em>')
     .replace(/__(.+?)__/g, '<strong>$1</strong>')
-    .replace(/(?<!\w)_(.+?)_(?!\w)/g, '<em>$1</em>')
+    // 避免 (?<!\w) 负向后查找：旧版 Safari / 部分 WebView 会报 invalid group specifier name
+    .replace(/(^|[^A-Za-z0-9_])_(.+?)_(?![A-Za-z0-9_])/g, '$1<em>$2</em>')
     .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_, alt, src) => {
       const safeSrc = resolveImageSrc(src.trim())
-      return `<img src="${safeSrc}" alt="${alt}" class="msg-img" onerror="this.onerror=null;this.style.display='none';this.insertAdjacentHTML('afterend','<span style=\\'color:var(--text-tertiary);font-size:12px\\'>[图片无法加载: ${escapeHtml(src)}]</span>')" />`
+      const escapedSrc = escapeHtml(src).replace(/\\/g, '&#x5c;')
+      return `<img src="${safeSrc}" alt="${alt}" class="msg-img" onerror="this.onerror=null;this.style.display='none';this.insertAdjacentHTML('afterend','<span style=\\'color:var(--text-tertiary);font-size:12px\\'>[图片无法加载: ${escapedSrc}]</span>')" />`
     })
     .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, label, url) => {
       const safe = /^https?:|^mailto:/i.test(url.trim()) ? url : '#'

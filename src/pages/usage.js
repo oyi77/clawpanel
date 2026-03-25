@@ -2,332 +2,240 @@
  * 使用情况页面 — 对接 OpenClaw Gateway sessions.usage API
  * 展示 Token 用量、费用、Top Models/Providers/Tools/Agents 等分析数据
  */
-import { api } from '../lib/tauri-api.js'
-import { t } from '../lib/i18n.js'
-import { icon } from '../lib/icons.js'
+import { wsClient } from '../lib/ws-client.js'
 import { toast } from '../components/toast.js'
+import { icon } from '../lib/icons.js'
+import { t } from '../lib/i18n.js'
 
-let _days = 7
-
-function fmtCost(n) {
-  if (n == null || n <= 0) return '$0'
-  return `$${n.toFixed(4)}`
-}
-
-function fmtRate(errors, total) {
-  if (!total) return '—'
-  return `${((errors / total) * 100).toFixed(1)}%`
-}
-
-function formatTokens(n) {
-  if (n == null || n === 0) return '0'
-  if (n >= 1e9) return `${(n / 1e9).toFixed(1)}B`
-  if (n >= 1e6) return `${(n / 1e6).toFixed(1)}M`
-  if (n >= 1e3) return `${(n / 1e3).toFixed(1)}K`
-  return String(n)
-}
-
-function computeDateRange(days) {
-  const now = new Date()
-  const endDate = now.toISOString().slice(0, 10)
-  const startDate = new Date(now.getTime() - (days - 1) * 86400000)
-    .toISOString().slice(0, 10)
-  return { startDate, endDate }
-}
+let _page = null, _unsubReady = null
 
 export async function render() {
   const page = document.createElement('div')
   page.className = 'page'
+  _page = page
 
   page.innerHTML = `
     <div class="page-header">
-      <div>
-        <h1 class="page-title">${t('Usage')}</h1>
-        <p class="page-desc">${t('Usage Desc')}</p>
-      </div>
-      <div class="page-actions">
-        <div class="btn-group">
-          <button class="btn btn-sm ${_days === 1 ? 'btn-primary' : 'btn-secondary'}" data-days="1">${t('Usage Today')}</button>
-          <button class="btn btn-sm ${_days === 7 ? 'btn-primary' : 'btn-secondary'}" data-days="7">${t('Usage 7 Days')}</button>
-          <button class="btn btn-sm ${_days === 30 ? 'btn-primary' : 'btn-secondary'}" data-days="30">${t('Usage 30 Days')}</button>
-        </div>
-        <button class="btn btn-sm btn-secondary" id="btn-usage-refresh">${icon('refresh-cw', 14)} ${t('Usage Refresh')}</button>
-      </div>
+      <h1 class="page-title">${t('usage.title')}</h1>
+      <p class="page-desc">${t('usage.desc')}</p>
     </div>
-    <div id="usage-content" class="page-content">
-      <div class="usage-empty">
-        <div class="service-spinner" style="margin-bottom:12px"></div>
-        <div style="color:var(--text-tertiary);margin-bottom:8px">${t('Loading...')}</div>
-      </div>
+    <div class="usage-toolbar" style="display:flex;gap:8px;align-items:center;margin-bottom:var(--space-lg);flex-wrap:wrap">
+      <button class="btn btn-sm ${_days === 1 ? 'btn-primary' : 'btn-secondary'}" data-days="1">${t('usage.today')}</button>
+      <button class="btn btn-sm ${_days === 7 ? 'btn-primary' : 'btn-secondary'}" data-days="7">${t('usage.days7')}</button>
+      <button class="btn btn-sm ${_days === 30 ? 'btn-primary' : 'btn-secondary'}" data-days="30">${t('usage.days30')}</button>
+      <button class="btn btn-sm btn-secondary" id="btn-usage-refresh">${icon('refresh-cw', 14)} ${t('usage.refresh')}</button>
+    </div>
+    <div id="usage-content">
+      <div class="stat-card loading-placeholder" style="height:120px"></div>
     </div>
   `
 
-  loadUsage(page)
-
-  page.addEventListener('click', (e) => {
-    const btnDays = e.target.closest('[data-days]')
-    if (btnDays) {
-      _days = parseInt(btnDays.dataset.days)
-      page.querySelectorAll('[data-days]').forEach(b => b.className = 'btn btn-sm btn-secondary')
-      btnDays.className = 'btn btn-sm btn-primary'
-      loadUsage(page)
-      return
-    }
-    if (e.target.closest('#btn-usage-refresh')) {
+  page.querySelectorAll('[data-days]').forEach(btn => {
+    btn.onclick = () => {
+      _days = parseInt(btn.dataset.days)
+      page.querySelectorAll('[data-days]').forEach(b => { b.classList.remove('btn-primary'); b.classList.add('btn-secondary') })
+      btn.classList.remove('btn-secondary'); btn.classList.add('btn-primary')
       loadUsage(page)
     }
   })
+  page.querySelector('#btn-usage-refresh')?.addEventListener('click', () => loadUsage(page))
 
+  loadUsage(page)
   return page
 }
 
-async function loadUsage(page) {
-  const el = page.querySelector('#usage-content')
-  el.innerHTML = `
-    <div class="usage-empty">
-      <div class="service-spinner" style="margin-bottom:12px"></div>
-      <div style="color:var(--text-tertiary);margin-bottom:8px">${t('Loading...')}</div>
-    </div>
-  `
-  try {
-    const { startDate, endDate } = computeDateRange(_days)
-    const data = await api.usageGet(startDate, endDate)
-    renderUsage(el, data, startDate, endDate)
-  } catch (e) {
-    el.innerHTML = `<div class="usage-empty"><div style="color:var(--error)">${t('Usage Load Failed')}: ${e.message}</div></div>`
-  }
+export function cleanup() {
+  _page = null
+  if (_unsubReady) { _unsubReady(); _unsubReady = null }
 }
 
-function renderUsage(el, data, startDate, endDate) {
-  if (!data) {
-    el.innerHTML = `<div class="usage-empty">${t('Usage No Data')}</div>`
+let _days = 7
+
+async function loadUsage(page) {
+  const el = page.querySelector('#usage-content')
+  el.innerHTML = `<div class="stat-card loading-placeholder" style="height:120px"></div>
+    <div class="stat-card loading-placeholder" style="height:200px;margin-top:var(--space-md)"></div>`
+
+  if (!wsClient.connected) {
+    el.innerHTML = `<div class="usage-empty">
+      <div style="color:var(--text-tertiary);margin-bottom:8px">${t('usage.gwConnecting')}</div>
+      <div class="form-hint">${t('usage.gwWait')}</div>
+    </div>`
+    // 自动等待连接就绪后重试
+    if (_unsubReady) _unsubReady()
+    _unsubReady = wsClient.onReady(() => {
+      if (_unsubReady) { _unsubReady(); _unsubReady = null }
+      if (_page) loadUsage(_page)
+    })
     return
   }
 
+  try {
+    const now = new Date()
+    const end = now.toISOString().slice(0, 10)
+    const start = new Date(now.getTime() - (_days - 1) * 86400000).toISOString().slice(0, 10)
+    const data = await wsClient.request('sessions.usage', { startDate: start, endDate: end, limit: 20 })
+    renderUsage(el, data)
+  } catch (e) {
+    el.innerHTML = `<div class="usage-empty">
+      <div style="color:var(--error);margin-bottom:8px">${t('usage.loadFailed')}: ${esc(e?.message || e)}</div>
+      <div class="form-hint">${t('usage.loadFailedHint')}</div>
+      <button class="btn btn-secondary btn-sm" style="margin-top:8px" onclick="this.closest('.page').querySelector('#btn-usage-refresh').click()">${t('usage.retry')}</button>
+    </div>`
+  }
+}
+
+function renderUsage(el, data) {
+  if (!data) { el.innerHTML = `<div class="usage-empty">${t('usage.noData')}</div>`; return }
+
   const totals = data.totals || {}
-  const agg = data.aggregates || {}
-  const msgs = agg.messages || {}
-  const tools = agg.tools || {}
-  const sessions = data.sessions || []
+  const a = data.aggregates || {}
+  const msgs = a.messages || {}
+  const tools = a.tools || {}
 
-  const html = `
-    <!-- Overview Cards -->
-    <div class="overview-grid" style="margin-bottom: var(--space-xl)">
-      ${createOverviewCard(icon('message-square', 20), t('Usage Messages'), msgs.total || 0, `${msgs.user || 0} ${t('Usage User Messages')} · ${msgs.assistant || 0} ${t('Usage Assistant Messages')}`)}
-      ${createOverviewCard(icon('wrench', 20), t('Usage Tool Calls'), tools.totalCalls || 0, `${tools.uniqueTools || 0} ${t('Usage Unique Tools')}`)}
-      ${createOverviewCard(icon('alert-circle', 20), t('Usage Errors'), msgs.errors || 0, `${t('Usage Error Rate')} ${fmtRate(msgs.errors, msgs.total)}`)}
-      ${createOverviewCard(icon('zap', 20), t('Usage Total Tokens'), formatTokens(totals.totalTokens || 0), `${formatTokens(totals.input || 0)} ${t('Usage Input')} · ${formatTokens(totals.output || 0)} ${t('Usage Output')}`)}
-      ${createOverviewCard(icon('dollar-sign', 20), t('Usage Cost'), fmtCost(totals.totalCost), `${fmtCost(totals.inputCost)} ${t('Usage Input')} · ${fmtCost(totals.outputCost)} ${t('Usage Output')}`)}
-      ${createOverviewCard(icon('monitor', 20), t('Usage Sessions'), sessions.length, `${startDate} ~ ${endDate}`)}
-    </div>
+  const fmtTokens = (n) => {
+    if (n == null || n === 0) return '0'
+    if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M'
+    if (n >= 1e3) return (n / 1e3).toFixed(1) + 'k'
+    return String(n)
+  }
+  const fmtCost = (n) => n != null && n > 0 ? '$' + n.toFixed(4) : '$0'
+  const fmtRate = (errors, total) => {
+    if (!total) return '—'
+    const pct = (errors / total * 100).toFixed(1)
+    return pct + '%'
+  }
 
-    <!-- Top Rankings -->
-    ${renderTopRankings(agg, tools)}
-
-    <!-- Token Breakdown -->
-    ${renderTokenBreakdown(totals)}
-
-    <!-- Daily Usage Chart -->
-    ${agg.daily && agg.daily.length > 0 ? renderDailyChart(agg.daily) : ''}
-
-    <!-- Session Details -->
-    ${sessions.length > 0 ? renderSessionList(sessions) : ''}
-  `
-
-  el.innerHTML = html
-}
-
-function createOverviewCard(iconHtml, label, value, meta) {
-  return `
-    <div class="overview-card">
-      <div class="overview-card-icon">${iconHtml}</div>
-      <div class="overview-card-body">
-        <div class="overview-card-value">${value}</div>
-        <div class="overview-card-title">${label}</div>
-        <div class="overview-card-meta">${meta}</div>
+  // ── 概览卡片 ──
+  const overviewHtml = `
+    <div class="stat-cards" style="margin-bottom:var(--space-lg)">
+      <div class="stat-card">
+        <div class="stat-card-header"><span class="stat-card-label">${t('usage.messages')}</span></div>
+        <div class="stat-card-value">${msgs.total || 0}</div>
+        <div class="stat-card-meta">${msgs.user || 0} ${t('usage.userMsgs')} · ${msgs.assistant || 0} ${t('usage.assistantMsgs')}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-card-header"><span class="stat-card-label">${t('usage.toolCalls')}</span></div>
+        <div class="stat-card-value">${tools.totalCalls || 0}</div>
+        <div class="stat-card-meta">${t('usage.toolKinds', { count: tools.uniqueTools || 0 })}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-card-header"><span class="stat-card-label">${t('usage.errors')}</span></div>
+        <div class="stat-card-value">${msgs.errors || 0}</div>
+        <div class="stat-card-meta">${t('usage.errorRate')} ${fmtRate(msgs.errors, msgs.total)}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-card-header"><span class="stat-card-label">${t('usage.totalTokens')}</span></div>
+        <div class="stat-card-value">${fmtTokens(totals.totalTokens)}</div>
+        <div class="stat-card-meta">${fmtTokens(totals.input)} ${t('usage.input')} · ${fmtTokens(totals.output)} ${t('usage.output')}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-card-header"><span class="stat-card-label">${t('usage.cost')}</span></div>
+        <div class="stat-card-value">${fmtCost(totals.totalCost)}</div>
+        <div class="stat-card-meta">${fmtCost(totals.inputCost)} ${t('usage.input')} · ${fmtCost(totals.outputCost)} ${t('usage.output')}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-card-header"><span class="stat-card-label">${t('usage.sessions')}</span></div>
+        <div class="stat-card-value">${(data.sessions || []).length}</div>
+        <div class="stat-card-meta">${data.startDate || ''} ~ ${data.endDate || ''}</div>
       </div>
     </div>
   `
-}
 
-function renderTopRankings(agg, tools) {
-  const sections = []
-
-  if (agg.byModel && agg.byModel.length > 0) {
-    sections.push({
-      title: t('Usage Top Models'),
-      items: agg.byModel.slice(0, 5).map(m => ({
-        label: m.model || t('Usage Unknown'),
-        value: `${fmtCost(m.totals?.totalCost)} · ${formatTokens(m.totals?.totalTokens || 0)}`
-      }))
-    })
+  // ── Top 排行 ──
+  const renderTop = (title, items, keyFn, valueFn) => {
+    if (!items || !items.length) return ''
+    const rows = items.slice(0, 5).map(item => `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border-primary)">
+        <span style="font-size:var(--font-size-sm);color:var(--text-primary);font-weight:500">${esc(keyFn(item))}</span>
+        <span style="font-size:var(--font-size-sm);color:var(--text-secondary);font-family:var(--font-mono)">${valueFn(item)}</span>
+      </div>
+    `).join('')
+    return `
+      <div class="usage-top-card">
+        <div class="usage-top-title">${title}</div>
+        ${rows}
+      </div>
+    `
   }
 
-  if (agg.byProvider && agg.byProvider.length > 0) {
-    sections.push({
-      title: t('Usage Top Providers'),
-      items: agg.byProvider.slice(0, 5).map(p => ({
-        label: p.provider || t('Usage Unknown'),
-        value: `${fmtCost(p.totals?.totalCost)} · ${p.count} ${t('Usage Calls')}`
-      }))
-    })
+  const topModels = renderTop(t('usage.topModels'),
+    a.byModel, m => m.model || t('usage.unknownModel'), m => fmtCost(m.totals?.totalCost) + ' · ' + fmtTokens(m.totals?.totalTokens))
+  const topProviders = renderTop(t('usage.topProviders'),
+    a.byProvider, p => p.provider || t('usage.unknownProvider'), p => fmtCost(p.totals?.totalCost) + ' · ' + t('usage.times', { count: p.count }))
+  const topTools = renderTop(t('usage.topTools'),
+    (tools.tools || []), item => item.name, item => t('usage.timesCall', { count: item.count }))
+  const topAgents = renderTop(t('usage.topAgents'),
+    a.byAgent, item => item.agentId || 'main', item => fmtCost(item.totals?.totalCost))
+  const topChannels = renderTop(t('usage.topChannels'),
+    a.byChannel, c => c.channel || 'webchat', c => fmtCost(c.totals?.totalCost))
+
+  const topsHtml = `<div class="usage-tops-grid">${topModels}${topProviders}${topTools}${topAgents}${topChannels}</div>`
+
+  // ── Token 分类 ──
+  const tokenBreakdownHtml = `
+    <div class="config-section" style="margin-top:var(--space-lg)">
+      <div class="config-section-title">${t('usage.tokenBreakdown')}</div>
+      <div style="display:flex;gap:var(--space-lg);flex-wrap:wrap;padding:var(--space-md)">
+        <div><span style="display:inline-block;width:10px;height:10px;background:var(--error);border-radius:2px;margin-right:6px"></span>${t('usage.outputTokens')} ${fmtTokens(totals.output)}</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:var(--accent);border-radius:2px;margin-right:6px"></span>${t('usage.inputTokens')} ${fmtTokens(totals.input)}</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:var(--success);border-radius:2px;margin-right:6px"></span>${t('usage.cacheRead')} ${fmtTokens(totals.cacheRead)}</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:var(--warning);border-radius:2px;margin-right:6px"></span>${t('usage.cacheWrite')} ${fmtTokens(totals.cacheWrite)}</div>
+      </div>
+    </div>
+  `
+
+  // ── 每日用量 ──
+  const daily = a.daily || []
+  let dailyHtml = ''
+  if (daily.length > 0) {
+    const maxTokens = Math.max(...daily.map(d => d.tokens || 0), 1)
+    const bars = daily.map(d => {
+      const pct = Math.max(1, Math.round((d.tokens || 0) / maxTokens * 100))
+      const date = (d.date || '').slice(5) // MM-DD
+      return `<div class="usage-daily-bar-wrap" title="${d.date}: ${fmtTokens(d.tokens)} tokens · ${d.messages || 0} msgs">
+        <div class="usage-daily-bar" style="height:${pct}%"></div>
+        <div class="usage-daily-label">${date}</div>
+      </div>`
+    }).join('')
+    dailyHtml = `
+      <div class="config-section" style="margin-top:var(--space-lg)">
+        <div class="config-section-title">${t('usage.dailyUsage')}</div>
+        <div class="usage-daily-chart">${bars}</div>
+      </div>
+    `
   }
 
-  if (tools.tools && tools.tools.length > 0) {
-    sections.push({
-      title: t('Usage Top Tools'),
-      items: tools.tools.slice(0, 5).map(tool => ({
-        label: tool.name,
-        value: `${tool.count} ${t('Usage Calls')}`
-      }))
-    })
-  }
-
-  if (agg.byAgent && agg.byAgent.length > 0) {
-    sections.push({
-      title: t('Usage Top Agents'),
-      items: agg.byAgent.slice(0, 5).map(a => ({
-        label: a.agentId || 'main',
-        value: fmtCost(a.totals?.totalCost)
-      }))
-    })
-  }
-
-  if (agg.byChannel && agg.byChannel.length > 0) {
-    sections.push({
-      title: t('Usage Top Channels'),
-      items: agg.byChannel.slice(0, 5).map(c => ({
-        label: c.channel || 'webchat',
-        value: fmtCost(c.totals?.totalCost)
-      }))
-    })
-  }
-
-  if (sections.length === 0) return ''
-
-  return `
-    <div class="usage-tops-grid" style="margin-bottom: var(--space-xl)">
-      ${sections.map(section => `
-        <div class="usage-top-card">
-          <div class="usage-top-title">${section.title}</div>
-          ${section.items.map(item => `
-            <div class="flex items-center justify-between py-1.5 border-b border-border last:border-b-0">
-              <span class="text-sm font-medium truncate mr-2">${item.label}</span>
-              <span class="text-sm text-muted-foreground font-mono shrink-0">${item.value}</span>
-            </div>
-          `).join('')}
+  // ── 会话列表 ──
+  const sessions = (data.sessions || []).slice(0, 10)
+  let sessionsHtml = ''
+  if (sessions.length > 0) {
+    const rows = sessions.map(s => {
+      const u = s.usage || {}
+      const key = esc(s.key || '').replace(/^agent:main:/, '')
+      const model = s.model || u.modelUsage?.[0]?.model || ''
+      const provider = u.modelUsage?.[0]?.provider || s.modelProvider || ''
+      return `<div class="session-row">
+        <div class="session-row-header">
+          <span class="session-key" title="${esc(s.key || '')}">${key || s.sessionId?.slice(0, 12) || '—'}</span>
+          ${s.agentId ? `<span class="session-flag">${esc(s.agentId)}</span>` : ''}
+          ${model ? `<span class="session-model">${esc(model)}</span>` : ''}
+          ${provider ? `<span class="session-flag">${esc(provider)}</span>` : ''}
         </div>
-      `).join('')}
-    </div>
-  `
+        <div class="session-row-meta">${fmtTokens(u.totalTokens)} tokens · ${fmtCost(u.totalCost)} · ${(u.messageCounts?.total || 0)} msgs${u.messageCounts?.errors ? ' · ' + u.messageCounts.errors + ' err' : ''}</div>
+      </div>`
+    }).join('')
+    sessionsHtml = `
+      <div class="config-section" style="margin-top:var(--space-lg)">
+        <div class="config-section-title">${t('usage.sessionDetail')} <span style="font-weight:normal;color:var(--text-tertiary);font-size:var(--font-size-xs)">${t('usage.recentN', { count: sessions.length })}</span></div>
+        <div class="session-list">${rows}</div>
+      </div>
+    `
+  }
+
+  el.innerHTML = overviewHtml + topsHtml + tokenBreakdownHtml + dailyHtml + sessionsHtml
 }
 
-function renderTokenBreakdown(totals) {
-  const input = totals.input || 0
-  const output = totals.output || 0
-  const cacheRead = totals.cacheRead || 0
-  const cacheWrite = totals.cacheWrite || 0
-  const total = input + output + cacheRead + cacheWrite
-
-  if (total === 0) return ''
-
-  const getPct = (v) => ((v / total) * 100).toFixed(1)
-
-  return `
-    <div class="usage-top-card" style="margin-bottom: var(--space-xl)">
-      <div class="usage-top-title">${t('Usage Token Breakdown')}</div>
-      <div class="flex items-center gap-4 mt-3">
-        <div class="flex-1 h-3 rounded-full overflow-hidden flex" style="height: 12px">
-          ${input > 0 ? `<div class="bg-blue-400 transition-all" style="width: ${getPct(input)}%"></div>` : ''}
-          ${output > 0 ? `<div class="bg-red-400 transition-all" style="width: ${getPct(output)}%"></div>` : ''}
-          ${cacheRead > 0 ? `<div class="bg-green-400 transition-all" style="width: ${getPct(cacheRead)}%"></div>` : ''}
-          ${cacheWrite > 0 ? `<div class="bg-amber-400 transition-all" style="width: ${getPct(cacheWrite)}%"></div>` : ''}
-        </div>
-      </div>
-      <div class="flex flex-wrap gap-x-6 gap-y-1 mt-3">
-        <div class="flex items-center gap-1.5 text-sm">
-          <span class="inline-block w-2.5 h-2.5 rounded-sm bg-blue-400"></span>
-          <span class="text-muted-foreground">${t('Usage Input')} ${formatTokens(input)}</span>
-        </div>
-        <div class="flex items-center gap-1.5 text-sm">
-          <span class="inline-block w-2.5 h-2.5 rounded-sm bg-red-400"></span>
-          <span class="text-muted-foreground">${t('Usage Output')} ${formatTokens(output)}</span>
-        </div>
-        ${cacheRead > 0 ? `
-          <div class="flex items-center gap-1.5 text-sm">
-            <span class="inline-block w-2.5 h-2.5 rounded-sm bg-green-400"></span>
-            <span class="text-muted-foreground">${t('Usage Cache Read')} ${formatTokens(cacheRead)}</span>
-          </div>
-        ` : ''}
-        ${cacheWrite > 0 ? `
-          <div class="flex items-center gap-1.5 text-sm">
-            <span class="inline-block w-2.5 h-2.5 rounded-sm bg-amber-400"></span>
-            <span class="text-muted-foreground">${t('Usage Cache Write')} ${formatTokens(cacheWrite)}</span>
-          </div>
-        ` : ''}
-      </div>
-    </div>
-  `
-}
-
-function renderDailyChart(daily) {
-  const maxTokens = Math.max(...daily.map(d => d.tokens || 0), 1)
-
-  return `
-    <div class="usage-top-card" style="margin-bottom: var(--space-xl)">
-      <div class="usage-top-title">${t('Usage Daily Usage')}</div>
-      <div class="usage-daily-chart mt-4">
-        ${daily.map(d => {
-          const pct = Math.max(2, Math.round(((d.tokens || 0) / maxTokens) * 100))
-          const dateLabel = (d.date || '').slice(5)
-          return `
-            <div class="usage-daily-bar-wrap" title="${d.date}: ${formatTokens(d.tokens)} ${t('Usage Tokens')} · ${d.messages || 0} ${t('Usage Msgs')}">
-              <div class="usage-daily-bar" style="height: ${pct}%"></div>
-              <span class="usage-daily-label">${dateLabel}</span>
-            </div>
-          `
-        }).join('')}
-      </div>
-    </div>
-  `
-}
-
-function renderSessionList(sessions) {
-  const visible = sessions.slice(0, 10)
-
-  return `
-    <div class="usage-top-card">
-      <div class="flex items-center gap-2 mb-3">
-        <div class="usage-top-title" style="margin-bottom: 0">${t('Usage Session Details')}</div>
-        <span class="text-xs text-muted-foreground">${t('Usage Recent N').replace('{{count}}', visible.length)}</span>
-      </div>
-      <div class="divide-y divide-border">
-        ${visible.map(s => {
-          const u = s.usage || {}
-          const key = (s.key || '').replace(/^agent:main:/, '')
-          const model = s.model || (u.modelUsage && u.modelUsage[0]?.model) || ''
-          const provider = (u.modelUsage && u.modelUsage[0]?.provider) || s.modelProvider || ''
-
-          return `
-            <div class="py-2.5 first:pt-0 last:pb-0">
-              <div class="flex items-center gap-2 flex-wrap">
-                <span class="text-sm font-medium truncate" style="max-width: 200px" title="${s.key}">
-                  ${key || (s.sessionId ? s.sessionId.slice(0, 12) : '—')}
-                </span>
-                ${s.agentId ? `<span class="text-xs px-1.5 py-0.5 rounded bg-bg-tertiary">${s.agentId}</span>` : ''}
-                ${model ? `<span class="text-xs px-1.5 py-0.5 rounded font-mono border border-border">${model}</span>` : ''}
-                ${provider ? `<span class="text-xs px-1.5 py-0.5 rounded bg-bg-tertiary">${provider}</span>` : ''}
-              </div>
-              <p class="text-xs text-muted-foreground mt-1">
-                ${formatTokens(u.totalTokens || 0)} ${t('Usage Tokens')}
-                · ${fmtCost(u.totalCost)}
-                · ${u.messageCounts?.total || 0} ${t('Usage Msgs')}
-                ${(u.messageCounts?.errors ?? 0) > 0 ? `<span class="text-danger"> · ${u.messageCounts.errors} ${t('Usage Err')}</span>` : ''}
-              </p>
-            </div>
-          `
-        }).join('')}
-      </div>
-    </div>
-  `
+function esc(str) {
+  return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }

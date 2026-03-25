@@ -4,75 +4,74 @@
 import { navigate, getCurrentRoute, reloadCurrentRoute } from '../router.js'
 import { toggleTheme, getTheme } from '../lib/theme.js'
 import { isOpenclawReady, getActiveInstance, switchInstance, onInstanceChange } from '../lib/app-state.js'
-import { t, getLang, setLang } from '../lib/i18n.js'
 import { api } from '../lib/tauri-api.js'
 import { toast } from './toast.js'
 import { version as APP_VERSION } from '../../package.json'
+import { t, getLang, setLang, getAvailableLangs } from '../lib/i18n.js'
 
-const NAV_ITEMS_FULL = () => [
+function NAV_ITEMS_FULL() { return [
   {
-    section: t('Overview'),
+    section: t('sidebar.sectionMonitor'),
     items: [
-      { route: '/dashboard', label: t('Dashboard'), icon: 'dashboard' },
-      { route: '/assistant', label: t('Assistant'), icon: 'assistant' },
-      { route: '/chat', label: t('Real-time Chat'), icon: 'chat' },
-      { route: '/services', label: t('Services'), icon: 'services' },
-      { route: '/logs', label: t('Logs'), icon: 'logs' },
+      { route: '/dashboard', label: t('sidebar.dashboard'), icon: 'dashboard' },
+      { route: '/assistant', label: t('sidebar.assistant'), icon: 'assistant' },
+      { route: '/chat', label: t('sidebar.chat'), icon: 'chat' },
+      { route: '/services', label: t('sidebar.services'), icon: 'services' },
+      { route: '/logs', label: t('sidebar.logs'), icon: 'logs' },
     ]
   },
   {
-    section: t('Configuration'),
+    section: t('sidebar.sectionConfig'),
     items: [
-      { route: '/models', label: t('Models'), icon: 'models' },
-      { route: '/agents', label: t('Agents'), icon: 'agents' },
-      { route: '/gateway', label: t('Gateway'), icon: 'gateway' },
-      { route: '/channels', label: t('Channels'), icon: 'channels' },
-      { route: '/communication', label: t('Automation'), icon: 'settings' },
-      { route: '/security', label: t('Security'), icon: 'security' },
+      { route: '/models', label: t('sidebar.models'), icon: 'models' },
+      { route: '/agents', label: t('sidebar.agents'), icon: 'agents' },
+      { route: '/gateway', label: t('sidebar.gateway'), icon: 'gateway' },
+      { route: '/channels', label: t('sidebar.channels'), icon: 'channels' },
+      { route: '/communication', label: t('sidebar.communication'), icon: 'settings' },
+      { route: '/security', label: t('sidebar.security'), icon: 'security' },
     ]
   },
   {
-    section: t('Data'),
+    section: t('sidebar.sectionData'),
     items: [
-      { route: '/memory', label: t('Memory'), icon: 'memory' },
-      { route: '/cron', label: t('Cron'), icon: 'clock' },
-      { route: '/usage', label: t('Usage'), icon: 'bar-chart' },
+      { route: '/memory', label: t('sidebar.memory'), icon: 'memory' },
+      { route: '/cron', label: t('sidebar.cron'), icon: 'clock' },
+      { route: '/usage', label: t('sidebar.usage'), icon: 'bar-chart' },
     ]
   },
   {
-    section: t('Extension'),
+    section: t('sidebar.sectionExtension'),
     items: [
-      { route: '/skills', label: t('Skills'), icon: 'skills' },
-      { route: '/workflow', label: t('Workflow'), icon: 'clock' },
+      { route: '/skills', label: t('sidebar.skills'), icon: 'skills' },
     ]
   },
   {
     section: '',
     items: [
-      { route: '/settings', label: t('Panel Settings'), icon: 'settings' },
-      { route: '/chat-debug', label: t('System Diagnosis'), icon: 'debug' },
-      { route: '/about', label: t('About'), icon: 'about' },
+      { route: '/settings', label: t('sidebar.settings'), icon: 'settings' },
+      { route: '/chat-debug', label: t('sidebar.chatDebug'), icon: 'debug' },
+      { route: '/about', label: t('sidebar.about'), icon: 'about' },
     ]
   }
-]
+] }
 
-const NAV_ITEMS_SETUP = () => [
+function NAV_ITEMS_SETUP() { return [
   {
     section: '',
     items: [
-      { route: '/setup', label: t('Setup'), icon: 'setup' },
-      { route: '/assistant', label: t('Assistant'), icon: 'assistant' },
+      { route: '/setup', label: t('sidebar.setup'), icon: 'setup' },
+      { route: '/assistant', label: t('sidebar.assistant'), icon: 'assistant' },
     ]
   },
   {
     section: '',
     items: [
-      { route: '/settings', label: t('Panel Settings'), icon: 'settings' },
-      { route: '/chat-debug', label: t('System Diagnosis'), icon: 'debug' },
-      { route: '/about', label: t('About'), icon: 'about' },
+      { route: '/settings', label: t('sidebar.settings'), icon: 'settings' },
+      { route: '/chat-debug', label: t('sidebar.chatDebug'), icon: 'debug' },
+      { route: '/about', label: t('sidebar.about'), icon: 'about' },
     ]
   }
-]
+] }
 
 const ICONS = {
   setup: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>',
@@ -140,7 +139,8 @@ export function renderSidebar(el) {
         <img src="/images/logo.png" alt="ClawPanel">
       </div>
       <span class="sidebar-title">ClawPanel</span>
-      <button class="sidebar-close-btn" id="btn-sidebar-close" title="${t('Close')}">&times;</button>
+      <button class="sidebar-collapse-btn" id="btn-sidebar-collapse" title="折叠/展开">${collapsed ? '»' : '«'}</button>
+      <button class="sidebar-close-btn" id="btn-sidebar-close" title="关闭菜单">&times;</button>
     </div>
     ${showSwitcher ? `<div class="instance-switcher" id="instance-switcher">
       <button class="instance-current" id="btn-instance-toggle">
@@ -157,7 +157,7 @@ export function renderSidebar(el) {
 
   for (const section of navItems) {
     html += `<div class="nav-section">
-      ${section.section ? `<div class="nav-section-title">${section.section}</div>` : ''}`
+      <div class="nav-section-title">${section.section}</div>`
 
     for (const item of section.items) {
       const active = current === item.route ? ' active' : ''
@@ -175,19 +175,36 @@ export function renderSidebar(el) {
   const isDark = getTheme() === 'dark'
   const sunIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>'
   const moonIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>'
-  const langIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>'
 
-  const curLang = getLang()
+  const langCode = getLang()
+  const langs = getAvailableLangs()
+  const currentLang = langs.find(l => l.code === langCode) || langs[0]
+  const globeIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>'
+  const checkIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="14" height="14"><polyline points="20 6 9 17 4 12"/></svg>'
+
+  const langOptions = langs.map(l => `
+    <div class="lang-option${l.code === langCode ? ' active' : ''}" data-lang="${l.code}">
+      <span class="lang-option-label">${l.label}</span>
+      <span class="lang-option-code">${l.code}</span>
+      ${l.code === langCode ? `<span class="lang-option-check">${checkIcon}</span>` : ''}
+    </div>
+  `).join('')
 
   html += `
     <div class="sidebar-footer">
-      <div class="nav-item-row" style="display:flex;gap:8px;padding:4px 12px">
-        <div class="nav-item" id="btn-theme-toggle" style="flex:1;padding:8px;justify-content:center" title="${t('Theme Mode')}">
-          ${isDark ? sunIcon : moonIcon}
-        </div>
-        <div class="nav-item" id="btn-lang-cycle" style="flex:1;padding:8px;justify-content:center;font-size:11px;font-weight:bold" title="Switch Language">
-           ${langIcon}
-           <span style="margin-left:6px">${curLang.toUpperCase()}</span>
+      <div class="nav-item" id="btn-theme-toggle">
+        ${isDark ? sunIcon : moonIcon}
+        <span>${isDark ? t('sidebar.themeLight') : t('sidebar.themeDark')}</span>
+      </div>
+      <div class="lang-switcher" id="lang-switcher">
+        <button class="nav-item lang-trigger" id="btn-lang-toggle">
+          ${globeIcon}
+          <span>${currentLang.label}</span>
+          <svg class="lang-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M18 15l-6-6-6 6"/></svg>
+        </button>
+        <div class="lang-dropdown" id="lang-dropdown">
+          ${langs.length > 4 ? '<div class="lang-search-wrap"><input class="lang-search" id="lang-search" type="text" placeholder="Search..." autocomplete="off"></div>' : ''}
+          <div class="lang-options" id="lang-options">${langOptions}</div>
         </div>
       </div>
       <div class="sidebar-meta">
@@ -231,16 +248,26 @@ export function renderSidebar(el) {
       // 主题切换
       const themeBtn = e.target.closest('#btn-theme-toggle')
       if (themeBtn) {
-        toggleTheme()
-        renderSidebar(el)
+        toggleTheme(() => renderSidebar(el))
         return
       }
-      // 语言切换 (Cycle)
-      const langBtn = e.target.closest('#btn-lang-cycle')
+      // 语言切换器：打开/关闭下拉
+      const langBtn = e.target.closest('#btn-lang-toggle')
       if (langBtn) {
-        const langs = ['en', 'id', 'zh', 'ru']
-        const next = langs[(langs.indexOf(getLang()) + 1) % langs.length]
-        setLang(next)
+        _toggleLangDropdown(el)
+        return
+      }
+      // 语言选项点击
+      const langOpt = e.target.closest('.lang-option[data-lang]')
+      if (langOpt) {
+        const code = langOpt.dataset.lang
+        if (code !== getLang()) {
+          setLang(code)
+          renderSidebar(el)
+          reloadCurrentRoute()
+        } else {
+          _closeLangDropdown()
+        }
         return
       }
       // 实例切换器
@@ -258,8 +285,8 @@ export function renderSidebar(el) {
           opt.style.opacity = '0.5'
           switchInstance(id).then(() => {
             const inst = getActiveInstance()
-            const desc = inst.type === 'local' ? t('Official') : inst.name
-            toast(`${t('Success')} — ${desc}`, 'success')
+            const desc = inst.type === 'local' ? t('instance.local') : inst.name
+            toast(t('instance.switchedTo', { name: desc }), 'success')
             renderSidebar(el)
             reloadCurrentRoute()
           })
@@ -276,6 +303,9 @@ export function renderSidebar(el) {
       // 点击其他区域关闭下拉
       if (!e.target.closest('.instance-switcher')) {
         _closeInstanceDropdown()
+      }
+      if (!e.target.closest('.lang-switcher')) {
+        _closeLangDropdown()
       }
     })
 
@@ -309,6 +339,40 @@ export function openMobileSidebar() {
   requestAnimationFrame(() => overlay.classList.add('visible'))
 }
 
+function _closeLangDropdown() {
+  const sw = document.getElementById('lang-switcher')
+  const dd = document.getElementById('lang-dropdown')
+  if (dd) dd.classList.remove('open')
+  if (sw) sw.classList.remove('open')
+}
+
+function _toggleLangDropdown(sidebarEl) {
+  const sw = document.getElementById('lang-switcher')
+  const dd = document.getElementById('lang-dropdown')
+  if (!dd) return
+  if (dd.classList.contains('open')) { dd.classList.remove('open'); if (sw) sw.classList.remove('open'); return }
+  dd.classList.add('open')
+  if (sw) sw.classList.add('open')
+  const searchInput = dd.querySelector('#lang-search')
+  if (searchInput) {
+    searchInput.value = ''
+    _filterLangOptions('')
+    requestAnimationFrame(() => searchInput.focus())
+    searchInput.oninput = () => _filterLangOptions(searchInput.value)
+  }
+}
+
+function _filterLangOptions(query) {
+  const opts = document.querySelectorAll('#lang-options .lang-option')
+  const q = query.toLowerCase().trim()
+  opts.forEach(opt => {
+    if (!q) { opt.style.display = ''; return }
+    const label = (opt.querySelector('.lang-option-label')?.textContent || '').toLowerCase()
+    const code = (opt.querySelector('.lang-option-code')?.textContent || '').toLowerCase()
+    opt.style.display = (label.includes(q) || code.includes(q)) ? '' : 'none'
+  })
+}
+
 function _closeInstanceDropdown() {
   const dd = document.getElementById('instance-dropdown')
   if (dd) dd.classList.remove('open')
@@ -319,19 +383,19 @@ async function _toggleInstanceDropdown(sidebarEl) {
   if (!dd) return
   if (dd.classList.contains('open')) { dd.classList.remove('open'); return }
 
-  dd.innerHTML = `<div style="padding:8px;color:var(--text-tertiary);font-size:12px">${t('Loading...')}</div>`
+  dd.innerHTML = `<div style="padding:8px;color:var(--text-tertiary);font-size:12px">${t('common.loading')}</div>`
   dd.classList.add('open')
 
   try {
     const [data, health] = await Promise.all([api.instanceList(), api.instanceHealthAll()])
     const healthMap = Object.fromEntries((health || []).map(h => [h.id, h]))
     const activeId = getActiveInstance().id
-    let html = `<div class="instance-hint">${t('Agent Desc')}</div>`
+    let html = `<div class="instance-hint">${t('instance.switchHint')}</div>`
     for (const inst of data.instances) {
       const h = healthMap[inst.id] || {}
       const active = inst.id === activeId ? ' active' : ''
       const dot = h.online !== false ? 'online' : 'offline'
-      const badge = inst.type === 'docker' ? '<span class="instance-badge docker">Docker</span>' : inst.type === 'remote' ? `<span class="instance-badge remote">${t('Official')}</span>` : ''
+      const badge = inst.type === 'docker' ? `<span class="instance-badge docker">${t('instance.docker')}</span>` : inst.type === 'remote' ? `<span class="instance-badge remote">${t('instance.remote')}</span>` : ''
       const port = inst.endpoint ? inst.endpoint.match(/:(\d+)/)?.[1] : ''
       const portTag = port ? `<span class="instance-port">:${port}</span>` : ''
       html += `<div class="instance-option${active}" data-id="${inst.id}">
@@ -339,11 +403,11 @@ async function _toggleInstanceDropdown(sidebarEl) {
         <span class="instance-opt-name">${_escSidebar(inst.name)}</span>
         ${portTag}
         ${badge}
-        ${active ? `<span class="instance-active-tag">${t('Primary')}</span>` : ''}
+        ${active ? `<span class="instance-active-tag">${t('instance.current')}</span>` : ''}
       </div>`
     }
     html += '<div class="instance-divider"></div>'
-    html += `<div class="instance-option instance-add" id="btn-instance-add">+ ${t('Add')}</div>`
+    html += `<div class="instance-option instance-add" id="btn-instance-add">+ ${t('instance.addInstance')}</div>`
     dd.innerHTML = html
   } catch (e) {
     dd.innerHTML = `<div style="padding:8px;color:var(--error);font-size:12px">${_escSidebar(e.message)}</div>`
@@ -355,27 +419,27 @@ async function _showAddInstanceDialog(sidebarEl) {
   overlay.className = 'docker-dialog-overlay'
   overlay.innerHTML = `
     <div class="docker-dialog">
-      <div class="docker-dialog-title">${t('Add')}</div>
+      <div class="docker-dialog-title">${t('instance.addRemote')}</div>
       <div class="form-group" style="margin-bottom:var(--space-md)">
-        <label class="form-label">${t('Name')}</label>
-        <input class="form-input" id="inst-name" placeholder="${t('Official')}" />
+        <label class="form-label">${t('instance.nameLabel')}</label>
+        <input class="form-input" id="inst-name" placeholder="${t('instance.namePlaceholder')}" />
       </div>
       <div class="form-group" style="margin-bottom:var(--space-md)">
-        <label class="form-label">${t('API URL')}</label>
+        <label class="form-label">${t('instance.endpointLabel')}</label>
         <input class="form-input" id="inst-endpoint" placeholder="http://192.168.1.100:1420" />
       </div>
       <div class="form-group" style="margin-bottom:var(--space-md)">
-        <label class="form-label">Gateway ${t('Port Detection')} (${t('Cancel')})</label>
+        <label class="form-label">${t('instance.gwPortLabel')}</label>
         <input class="form-input" id="inst-gw-port" type="number" value="18789" />
       </div>
       <div class="docker-dialog-hint">
-        ${t('Official')} <br/>
-        示例: <code>http://192.168.1.100:1420</code>
+        ${t('instance.remoteHint')}<br/>
+        ${t('instance.example')}: <code>http://192.168.1.100:1420</code>
       </div>
       <div id="inst-add-error" style="color:var(--error);font-size:12px;margin-top:var(--space-sm)"></div>
       <div class="docker-dialog-actions">
-        <button class="btn btn-secondary btn-sm" id="inst-cancel">${t('Cancel')}</button>
-        <button class="btn btn-primary btn-sm" id="inst-confirm">${t('Add')}</button>
+        <button class="btn btn-secondary btn-sm" id="inst-cancel">${t('common.cancel')}</button>
+        <button class="btn btn-primary btn-sm" id="inst-confirm">${t('common.add')}</button>
       </div>
     </div>
   `
@@ -387,16 +451,16 @@ async function _showAddInstanceDialog(sidebarEl) {
     const endpoint = overlay.querySelector('#inst-endpoint').value.trim()
     const gwPort = parseInt(overlay.querySelector('#inst-gw-port').value) || 18789
     const errEl = overlay.querySelector('#inst-add-error')
-    if (!name || !endpoint) { errEl.textContent = t('Warning'); return }
+    if (!name || !endpoint) { errEl.textContent = t('instance.nameRequired'); return }
     const btn = overlay.querySelector('#inst-confirm')
-    btn.disabled = true; btn.textContent = t('Loading...')
+    btn.disabled = true; btn.textContent = t('instance.adding')
     try {
       await api.instanceAdd({ name, type: 'remote', endpoint, gatewayPort: gwPort })
       overlay.remove()
       renderSidebar(sidebarEl)
     } catch (e) {
       errEl.textContent = e.message || String(e)
-      btn.disabled = false; btn.textContent = t('Add')
+      btn.disabled = false; btn.textContent = t('common.add')
     }
   }
 }

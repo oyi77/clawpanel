@@ -157,6 +157,13 @@ export async function checkBackendHealth() {
   }
 }
 
+// 配置保存后防抖重载 Gateway（3 秒内多次写入只触发一次重载）
+let _reloadTimer = null
+function _debouncedReloadGateway() {
+  clearTimeout(_reloadTimer)
+  _reloadTimer = setTimeout(() => { invoke('reload_gateway').catch(() => {}) }, 3000)
+}
+
 // 导出 API
 export const api = {
   // 服务管理（状态用短缓存，操作不缓存）
@@ -170,11 +177,13 @@ export const api = {
   getVersionInfo: () => cachedInvoke('get_version_info', {}, 30000),
   getStatusSummary: () => cachedInvoke('get_status_summary', {}, 60000),
   readOpenclawConfig: () => cachedInvoke('read_openclaw_config'),
-  writeOpenclawConfig: (config) => { invalidate('read_openclaw_config'); return invoke('write_openclaw_config', { config }) },
+  writeOpenclawConfig: (config) => { invalidate('read_openclaw_config'); return invoke('write_openclaw_config', { config }).then(r => { _debouncedReloadGateway(); return r }) },
   readMcpConfig: () => cachedInvoke('read_mcp_config'),
   writeMcpConfig: (config) => { invalidate('read_mcp_config'); return invoke('write_mcp_config', { config }) },
   reloadGateway: () => invoke('reload_gateway'),
   restartGateway: () => invoke('restart_gateway'),
+  doctorCheck: () => invoke('doctor_check'),
+  doctorFix: () => invoke('doctor_fix'),
   listOpenclawVersions: (source = 'chinese') => invoke('list_openclaw_versions', { source }),
   upgradeOpenclaw: (source = 'chinese', version = null, method = 'auto') => invoke('upgrade_openclaw', { source, version, method }),
   uninstallOpenclaw: (cleanConfig = false) => invoke('uninstall_openclaw', { cleanConfig }),
@@ -205,17 +214,33 @@ export const api = {
   exportMemoryZip: (category, agentId) => invoke('export_memory_zip', { category, agentId: agentId || null }),
 
   // 消息渠道管理
-  readPlatformConfig: (platform) => invoke('read_platform_config', { platform }),
-  saveMessagingPlatform: (platform, form, accountId) => { invalidate('list_configured_platforms', 'read_platform_config'); return invoke('save_messaging_platform', { platform, form, accountId: accountId || null }) },
-  removeMessagingPlatform: (platform) => { invalidate('list_configured_platforms', 'read_platform_config'); return invoke('remove_messaging_platform', { platform }) },
+  readPlatformConfig: (platform, accountId) => invoke('read_platform_config', { platform, accountId: accountId || null }),
+  saveMessagingPlatform: (platform, form, accountId, agentId) => { invalidate('list_configured_platforms', 'read_openclaw_config', 'read_platform_config'); return invoke('save_messaging_platform', { platform, form, accountId: accountId || null, agentId: agentId || null }) },
+  removeMessagingPlatform: (platform, accountId) => { invalidate('list_configured_platforms', 'read_openclaw_config', 'read_platform_config'); return invoke('remove_messaging_platform', { platform, accountId: accountId || null }) },
   toggleMessagingPlatform: (platform, enabled) => { invalidate('list_configured_platforms', 'read_openclaw_config', 'read_platform_config'); return invoke('toggle_messaging_platform', { platform, enabled }) },
   verifyBotToken: (platform, form) => invoke('verify_bot_token', { platform, form }),
+  diagnoseChannel: (platform, accountId) => invoke('diagnose_channel', { platform, accountId: accountId || null }),
+  repairQqbotChannelSetup: () => {
+    invalidate('list_configured_platforms', 'read_openclaw_config', 'read_platform_config')
+    return invoke('repair_qqbot_channel_setup')
+  },
   listConfiguredPlatforms: () => cachedInvoke('list_configured_platforms', {}, 5000),
   getChannelPluginStatus: (pluginId) => invoke('get_channel_plugin_status', { pluginId }),
   installQqbotPlugin: () => invoke('install_qqbot_plugin'),
   installChannelPlugin: (packageName, pluginId) => invoke('install_channel_plugin', { packageName, pluginId }),
+  runChannelAction: (platform, action) => invoke('run_channel_action', { platform, action }),
+  checkWeixinPluginStatus: () => invoke('check_weixin_plugin_status'),
+
+  // Agent 渠道绑定管理
+  getAgentBindings: (agentId) => invoke('get_agent_bindings', { agentId }),
+  listAllBindings: () => invoke('list_all_bindings'),
+  saveAgentBinding: (agentId, channel, accountId, bindingConfig) => { invalidate('read_openclaw_config', 'list_configured_platforms'); return invoke('save_agent_binding', { agentId, channel, accountId: accountId || null, bindingConfig: bindingConfig || {} }) },
+  deleteAgentBinding: (agentId, channel, accountId) => { invalidate('read_openclaw_config', 'list_configured_platforms'); return invoke('delete_agent_binding', { agentId, channel, accountId: accountId || null }) },
+  deleteAgentAllBindings: (agentId) => { invalidate('read_openclaw_config', 'list_configured_platforms'); return invoke('delete_agent_all_bindings', { agentId }) },
 
   // 面板配置 (clawpanel.json)
+  getOpenclawDir: () => invoke('get_openclaw_dir'),
+  relaunchApp: () => invoke('relaunch_app'),
   readPanelConfig: () => invoke('read_panel_config'),
   writePanelConfig: (config) => invoke('write_panel_config', { config }),
   testProxy: (url) => invoke('test_proxy', { url: url || null }),

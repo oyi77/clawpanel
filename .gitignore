@@ -1,6 +1,8 @@
 # 依赖
 node_modules/
 
+.cursor
+docs/issue-solutions.md
 # 构建产物
 dist/
 src-tauri/target/
@@ -53,6 +55,8 @@ docs/promo-video.mp4
 # Rust 开发工具
 src-tauri/.cargo/
 .codex/
-
-# API Keys (local only)
-scripts/api-keys.env
+# AI 上下文记忆
+.context.md
+CONTEXT_STATE.md
+PROJECT_CONTRACT.md
+project.yaml

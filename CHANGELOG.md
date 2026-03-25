@@ -5,6 +5,149 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.9.9] - 2026-03-24
+
+### 新功能 (Features)
+
+- **完整 i18n 国际化** — 全部页面使用 t() 国际化，侧边栏语言切换器（可搜索上拉下拉框），支持 11 种语言
+- **多语言 README** — 新增日本語、한국어、繁體中文、Tiếng Việt、Español、Português、Русский、Français、Deutsch 共 9 个 README 文件
+- **模型配置 Ollama 原生支持** — API 类型新增 `ollama` 选项，自动跳过 /v1 追加，助手页面显示 Ollama 专属提示
+
+### 修复 (Fixes)
+
+- **Cron 投递参数格式** — delivery mode 从错误的 `push` 修正为 `announce`，移除无效的 `to` 字段 (fixes #141)
+- **Cron 单渠道用户** — 允许单渠道用户选择投递渠道（之前 ≤1 个渠道会隐藏选择器）
+- **Cron 编辑保留投递** — 任务编辑时正确保留 delivery 字段
+- **Ollama 配置覆盖** — ClawPanel 不再将用户手动配置的 `api: "ollama"` 覆盖为 `openai-completions` (fixes #140)
+- **版本检测错误** — Windows 下优先通过 CLI 路径判断安装来源，默认返回 `official` 而非 `chinese` (fixes #139)
+- **版本号读取** — npm 全局目录按活跃 CLI 来源决定检查顺序，避免读到非活跃包的旧版本号
+- **助手 API 类型一致性** — `normalizeApiType` 统一 `google-generative-ai` 键名，修复 `requiresApiKey` 判断
+
+### 改进 (Improvements)
+
+- **官网品牌更新** — 公益 AI 接口 → 晴辰云 AI 接口，新增合规声明
+- **官网 SEO 优化** — meta 标签新增晴辰云、晴辰助手、Discord、多语言等关键词
+- **官网 Footer** — 新增 11 语言 README 链接行
+- **元宝派链接更新** — 全站更新为新链接
+- **移除独立安装包推广** — 下载区移除过时的 OpenClaw 独立安装包推广块
+
+## [0.9.8] - 2026-03-23
+
+### 新功能 (Features)
+
+- **渠道管理全面增强** — 新增渠道列表 + Agent 绑定双面板布局，支持渠道卡片批量管理
+- **10 大消息渠道全覆盖** — QQBot、Telegram、Discord、Slack、飞书、钉钉、微信、Signal、Matrix、MS Teams 全部支持面板内配置、保存、校验
+- **Signal 在线校验** — 新增 signal-cli HTTP daemon 连通性检测（/v1/about 端点），返回 API 版本信息
+- **MS Teams 在线校验** — 新增 Azure AD OAuth2 client_credentials 流程校验 App ID / App Password / Tenant ID
+- **微信 ClawBot 集成** — 腾讯微信官方 `@tencent-weixin/openclaw-weixin` 插件一键安装 + 扫码登录，QR 码 Canvas 渲染（手机可扫描）、插件版本检测与升级提示、登录后自动写入渠道配置并刷新列表
+- **QQ 渠道诊断** — QQBot 渠道增加专属诊断工具，检测插件安装、配置状态
+- **Agent 绑定 CRUD** — 支持在面板内直接创建/编辑/删除 Agent 路由绑定
+- **渠道标签映射** — 新增 channel-labels.js，统一中文渠道名称（如 telegram→Telegram, discord→Discord）
+- **Docker 部署支持** — 新增 Dockerfile 多阶段构建 + docker-compose.yml + 一键部署脚本
+- **Skills 管理增强** — Skill 验证、扫描、安装功能全面增强，支持 fullPath 检测
+- **Messaging 插件迁移** — QQBot 插件自动迁移到 @tencent-connect/openclaw-qqbot
+
+### 修复 (Fixes)
+
+- **WhatsApp 渠道移除** — 上游 WhatsApp 插件运行时未加载（Gateway `web.login.start` 返回 `not available`），暂时移除；改用微信官方渠道替代
+- **messaging.rs 编译错误修复** — 修复 `insert_array_as_csv` 缺少引用、Matrix/MS Teams 保存时 `cfg` 双重可变借用导致编译失败
+- **Gateway PID 检测逻辑修复** — Windows `is_process_alive` 从错误的前缀匹配改为精确 PID 字段解析
+- **JSON 配置修复重写** — `fix_common_json_errors` 单引号修复和注释剥离完全重写，避免截断 URL 中的 `//`
+- **Linux 异步阻塞修复** — `check_service_status` 和 `start_service_impl` 中的同步 TCP 连接改用 `spawn_blocking`
+- **XSS 安全修复** — channels.js `showWarning`、main.js `errMsg`、agents.js `renderBindingBadges` 和错误加载均添加 HTML 转义
+- **渠道卡片编辑按钮修复** — 已接入渠道卡片的「编辑」按钮缺失 click handler，点击无响应；现已补全事件绑定
+- **微信渠道检测修复** — 微信登录后自动写入 `channels.openclaw-weixin` 配置，修复 `platform_list_id` / `platform_storage_key` 双向映射，登录后立即刷新列表
+- **Vite 代理修复** — 移除重复 `ws: true`、无效 `econnreset` 事件监听，修复 WebSocket socket 错误处理
+- **Docker 部署修复** — .dockerignore 不再排除 src/，volume 挂载路径与 Dockerfile USER 一致
+- **心跳检测修复** — WebSocket 首次连接时 `_lastMessageAt` 初始化为 `Date.now()`，避免心跳永远不触发
+- **PID 安全假设修复** — `get_gateway_pid_by_port` 读不到命令行时不再假定为 Gateway
+
+### 改进 (Improvements)
+
+- **Win11 wmic 兼容** — `read_process_command_line` 优先使用 PowerShell `Get-CimInstance`，fallback 到 wmic
+- **macOS Intel 路径兼容** — 版本检测和来源检测同时查找 `/opt/homebrew`（ARM）和 `/usr/local`（Intel）
+- **macOS PID 检测** — 服务状态检测新增 `lsof` 获取 PID，不再始终返回 None
+- **Windows 路径兼容** — Skills fullPath 验证支持 Windows 盘符路径（如 `C:\`）
+- **gateway_listen_port 缓存** — 新增 5 秒缓存，避免服务检测时频繁读文件解析 JSON
+- **第三方 API 接入引导优化** — 移除内置密钥，改为引导式流程（注册→填密钥→选模型），新增助手↔OpenClaw 双向同步按钮（带确认框）
+- **API 错误信息完整展示** — 模型测试和助手测试的 API 错误（如 429 限流）完整显示 error.message，URL 自动转为可点击链接，方便排查和引流
+- **飞书渠道升级** — 从 `@openclaw/feishu` 迁移到飞书官方插件 `@larksuite/openclaw-lark`，支持文档读写、多维表格、日程等高级能力，一键扫码创建机器人；保存新插件配置时自动禁用旧 feishu 插件防止冲突
+- **日间/夜间模式圆形扩散动画** — 主题切换时新主题从指定角落以圆形向外扩散覆盖整个页面（View Transitions API），白切黑从左下角、黑切白从右上角，不支持的浏览器自动降级
+- **Gateway 重启防卡死** — `gateway_command` 增加 20s 超时，超时后自动 force-kill 残留进程并 fresh start；全平台启动前端口占用检查防止重复拉起；Guardian 自动守护在 Tauri 桌面端也启用；状态轮询间隔从 30s 缩短至 15s
+- **Regex 编译优化** — 多行注释正则改用 LazyLock 静态编译
+- **Agent 配置注释修正** — `agents.profiles` 注释修正为上游实际的 `agents.list`
+- **Linux cmd 候选清理** — 移除 Unix 平台上无意义的 `openclaw.cmd` 候选路径
+- **微信渠道升级体验** — 升级操作不再弹出扫码二维码，按钮文案区分安装/升级
+- **版本更新检测** — CI 不再将 minAppVersion 写死为当前版本，修正 latest.json 生成逻辑
+- **全平台 Clippy 修复** — 修复 Linux/macOS/Windows 上的 Rust Clippy 警告（strip_prefix、dead_code、unnecessary_unwrap 等）
+- **Linux Gateway 守护** — Linux 平台补齐 Duration 导入和 cleanup_zombie_gateway_processes 实现（通过 fuser 查端口占用进程并 kill）
+
+### 待规划 (Planned)
+
+> 以下为已归档的规划方案摘要，原独立文档已清理。
+
+- **Gateway 运行检测重构** — 用统一的「端口 + HTTP 探针」方案替换当前各平台复杂的进程/netstat/launchctl 检测逻辑，跨 Windows/macOS/Linux 统一实现。核心思路：先查端口占用确认进程存在，再发 HTTP 请求确认是 Gateway（`GET /v1/health` 或 `/v1/version`）。详见原 `docs/gateway-detection-plan.md`
+- **AI 助手功能扩展** — 五大模块：① Docker/WSL 管理（容器操作、镜像管理）② Web 搜索（搜索引擎集成、结果注入上下文）③ SSH 远程管理（连接/命令/文件传输）④ 知识库/灵魂迁移（导入导出 Agent 灵魂与知识）⑤ 模型配置自动导入（从服务商 API 自动发现模型）。详见原 `docs/assistant-features-plan.md`
+- **Docker 多实例管理** — API 代理 + 实例切换架构，支持一台机器部署多个 OpenClaw Docker 实例并在面板内统一调度。涉及 dev-api.js 代理层、前端实例选择器、数据隔离。详见原 `docs/docker-multi-instance-plan.md`
+- **国际化 (i18n)** — 基于 i18n.js 核心模块实现中英双语，语言包 JSON 结构，按页面逐步迁移硬编码中文字符串。包含语言检测、降级策略、参数插值。详见原 `docs/i18n-plan.md`
+- **命令执行权限管理** — AI 助手执行终端命令时支持白名单/黑名单规则，四种模式（确认/白名单/黑名单/无限），glob 通配符匹配，存储于 `clawpanel.json`。详见原 `docs/ROADMAP-v0.9.md`
+- **安装体验优化** — 默认安装原版包、保存自定义 Node.js 路径后实时生效验证、Linux Web 版后台一键更新机制
+- **其他** — 渠道级消息统计、更多国内模型服务商预设、Rust 原生 Docker API（bollard）、前端热更新增量包
+
+## [0.9.7] - 2026-03-21
+
+### 新功能 (Features)
+
+- **Markdown 表格渲染** — 聊天消息中的 Markdown 表格以 HTML 表格形式展示，支持表头高亮、斑马纹、悬停效果 (#112)
+- **Doctor 一键诊断修复** — 新增 `openclaw doctor --fix` 和 `openclaw doctor` 后端命令，支持从面板内自动检测和修复配置问题 (#103)
+- **自定义 OpenClaw 安装路径** — 初始设置和服务管理页支持自定义 OpenClaw 配置目录（如 `E:\数据\AI\.openclaw`），解决非默认安装位置的检测问题
+- **关闭窗口最小化到托盘** — 关闭主窗口时最小化到系统托盘，不退出应用
+- **应用重启命令** — 设置变更后支持从面板内一键重启应用
+
+### 修复 (Fixes)
+
+- **Agent 创建失败兜底** — CLI 创建 Agent 超时或失败时，自动降级为直接写 openclaw.json，不再因 CLI 卡死导致创建失败
+- **模型 API 类型自动修复** — 保存时自动将错误的 API 类型（如 `google-gemini` → `google-generative-ai`）修正为上游支持的格式 (#97)
+- **SkillHub 安装状态竞态** — 搜索时先实时检测 SkillHub 安装状态，避免缓存误判导致误报"请先安装"
+- **聊天响应看门狗** — 发送消息后 15 秒无 delta 事件自动刷新历史，防止响应丢失时 UI 卡在等待状态
+- **Clippy 编译警告** — 修复 dead_code 和 manual_flatten 编译警告，代码更规范
+
+### 改进 (Improvements)
+
+- **模型配置可折叠** — 每个服务商区块支持折叠/展开，模型多时页面更清爽 (#98)
+- **PATH 检测优先级优化** — macOS/Linux/Windows 均调整为版本管理器路径（nvm/volta/fnm）优先于系统路径，减少环境检测误判
+- **聊天 typing 提示增强** — 等待回复时支持显示工具调用等状态提示文字
+- **官网内容更新** — 新增 apple-touch-icon、布局优化、图标资源重命名解决浏览器缓存问题
+- **贡献者致谢** — README 和 CONTRIBUTING.md 新增历史贡献者致谢名单及维护指南
+
+## [0.9.6] - 2026-03-18
+
+### 修复 (Fixes)
+
+- **仪表盘二次加载崩溃** — 切换页面后返回仪表盘不再报 `Cannot read properties of null (reading 'recommended')` (#100)
+- **聊天代码单引号乱码** — 代码块中 `'` 不再显示为 `&#x27;`，修正 Markdown 渲染器的 HTML 转义策略 (#99)
+- **聊天图片路径反斜杠丢失** — Windows 路径 `C:\Users\...` 在图片加载失败提示中不再丢失反斜杠
+- **聊天页折叠侧边栏后不自适应** — 折叠主侧边栏后聊天页面现在正确撑满全宽
+- **Gateway 状态横条延迟** — WebSocket 连接成功后立即刷新 Gateway 状态，不再等待 30 秒轮询周期
+- **版本列表加载失败** — 修复 npm registry 返回 gzip 压缩响应时 `error decoding response body` 错误（reqwest 启用 gzip 解压）
+- **配置保存后 Gateway 需手动启动** — 所有页面（模型/渠道/通信等）保存 openclaw.json 后自动重载 Gateway（防抖 3 秒），不再需要手动点启动按钮
+- **dev.ps1 启动脚本报错** — 修复 PowerShell 解析 emoji 字符时的编码错误
+
+### 新功能 (Features)
+
+- **托管 Agent** — 聊天页新增「⊕ 托管」按钮，可设定任务目标后让 AI 自动循环引导 OpenClaw 执行：
+  - 内置系统提示词，明确调度 Agent 的身份和职责
+  - 可视化滑块设置最大回复次数（5-200 或 ∞ 无限）
+  - 定时自动停止（开关 + 滑块 + 倒计时进度条）
+  - 上下文自动压缩（超过 20 条历史自动压缩为摘要）
+  - OpenClaw 回复包含「完成/停止」时自动停止循环
+  - 单按钮启动/停止切换，运行时输入框自动锁定
+
+### 改进 (Improvements)
+
+- **Toast 通知样式** — 从半透明毛玻璃改为实底+边框+阴影，暗色模式兼容性更好
+- **聊天输入框增大** — 最小高度 44px，最大高度 200px，输入体验更舒适
+
 ## [0.9.5] - 2026-03-17
 
 ### 修复 (Fixes)
