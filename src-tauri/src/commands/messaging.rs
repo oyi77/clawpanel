@@ -1198,19 +1198,44 @@ pub async fn run_channel_action(
                 .collect();
             let needs_legacy = oc_nums < vec![2026, 3, 22];
             if needs_legacy {
-                // 微信插件所有版本（v1.0.0~v2.0.1）都依赖 OpenClaw 2026.3.22+ 的 SDK
-                // 没有兼容旧版的版本，必须先升级 OpenClaw
+                // 微信插件所有版本都依赖 OpenClaw >= 2026.3.22 的 SDK
+                // 给用户两个选择：升级 OpenClaw 或手动尝试安装
                 let _ = app.emit(
                     "channel-action-log",
                     json!({ "platform": &platform, "action": &action, "kind": "error",
-                        "message": format!("微信插件要求 OpenClaw >= 2026.3.22，当前版本 {} 不兼容。请先在「服务管理」页面升级 OpenClaw。", oc_ver) }),
+                        "message": format!("⚠ 微信插件要求 OpenClaw >= 2026.3.22，当前版本 {}。", oc_ver) }),
+                );
+                let _ = app.emit(
+                    "channel-action-log",
+                    json!({ "platform": &platform, "action": &action, "kind": "info",
+                        "message": "建议方案 1（推荐）：先升级 OpenClaw，再安装微信插件" }),
+                );
+                let _ = app.emit(
+                    "channel-action-log",
+                    json!({ "platform": &platform, "action": &action, "kind": "info",
+                        "message": "  → 前往「服务管理」页面点击升级" }),
+                );
+                let _ = app.emit(
+                    "channel-action-log",
+                    json!({ "platform": &platform, "action": &action, "kind": "info",
+                        "message": "建议方案 2：在终端手动尝试安装（可能存在兼容问题）" }),
+                );
+                let _ = app.emit(
+                    "channel-action-log",
+                    json!({ "platform": &platform, "action": &action, "kind": "info",
+                        "message": "  → npx -y @tencent-weixin/openclaw-weixin-cli@latest install" }),
+                );
+                let _ = app.emit(
+                    "channel-action-log",
+                    json!({ "platform": &platform, "action": &action, "kind": "info",
+                        "message": "后续版本将升级推荐内核到最新版以完整支持微信插件。" }),
                 );
                 let _ = app.emit(
                     "channel-action-progress",
                     json!({ "platform": &platform, "action": &action, "progress": 100 }),
                 );
                 return Err(format!(
-                    "微信插件要求 OpenClaw >= 2026.3.22，当前版本 {} 不兼容，请先升级 OpenClaw",
+                    "微信插件要求 OpenClaw >= 2026.3.22（当前 {}），请先升级 OpenClaw 或在终端手动安装",
                     oc_ver
                 ));
             }
