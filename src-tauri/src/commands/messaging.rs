@@ -1198,10 +1198,23 @@ pub async fn run_channel_action(
                 .collect();
             let needs_legacy = oc_nums < vec![2026, 3, 22];
             if needs_legacy {
-                "@tencent-weixin/openclaw-weixin-cli@1.0.3".to_string()
-            } else {
-                "@tencent-weixin/openclaw-weixin-cli@latest".to_string()
+                // 微信插件所有版本（v1.0.0~v2.0.1）都依赖 OpenClaw 2026.3.22+ 的 SDK
+                // 没有兼容旧版的版本，必须先升级 OpenClaw
+                let _ = app.emit(
+                    "channel-action-log",
+                    json!({ "platform": &platform, "action": &action, "kind": "error",
+                        "message": format!("微信插件要求 OpenClaw >= 2026.3.22，当前版本 {} 不兼容。请先在「服务管理」页面升级 OpenClaw。", oc_ver) }),
+                );
+                let _ = app.emit(
+                    "channel-action-progress",
+                    json!({ "platform": &platform, "action": &action, "progress": 100 }),
+                );
+                return Err(format!(
+                    "微信插件要求 OpenClaw >= 2026.3.22，当前版本 {} 不兼容，请先升级 OpenClaw",
+                    oc_ver
+                ));
             }
+            "@tencent-weixin/openclaw-weixin-cli@latest".to_string()
         };
         // 先清理旧的不兼容插件目录 + openclaw.json 中的残留配置
         // （否则 OpenClaw 配置校验会报 unknown channel / plugin not found）
