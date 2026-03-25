@@ -31,6 +31,8 @@ const CLUSTER_TOKEN = 'clawpanel-cluster-secret-2026'
 const PANEL_CONFIG_PATH = path.join(OPENCLAW_DIR, 'clawpanel.json')
 const DOCKER_NODES_PATH = path.join(OPENCLAW_DIR, 'docker-nodes.json')
 const INSTANCES_PATH = path.join(OPENCLAW_DIR, 'instances.json')
+const WORKFLOW_RUNS_PATH = path.join(OPENCLAW_DIR, 'workflow-runs.json')
+const WORKFLOW_LOGS_DIR = path.join(OPENCLAW_DIR, 'workflow-logs')
 const DOCKER_SOCKET = process.platform === 'win32' ? '//./pipe/docker_engine' : '/var/run/docker.sock'
 const OPENCLAW_IMAGE = 'ghcr.io/qingchencloud/openclaw'
 const PANEL_VERSION = (() => {
@@ -4157,11 +4159,64 @@ const handlers = {
   },
 
   workflow_template_list() {
-    return [
-      { id: 'tiktok-viral', name: 'TikTok Viral Video Pipeline', meta: 'Last used: 2h ago • 3 steps' },
-      { id: 'market-research', name: 'Market Opportunity Research', meta: 'Last used: Yesterday • 5 steps' },
-      { id: 'insta-promo', name: 'Instagram Product Promo', meta: 'Last used: 3 days ago • 2 steps' }
+    const p = path.join(OPENCLAW_DIR, 'workflow-templates.json')
+    if (fs.existsSync(p)) {
+      try { return JSON.parse(fs.readFileSync(p, 'utf8')) } catch {}
+    }
+    const defaults = [
+      {
+        id: 'tiktok-viral',
+        name: 'TikTok Viral Video Pipeline',
+        description: 'Automate the creation of viral TikTok videos from research to publishing.',
+        steps: ['Research trending topics and hooks', 'Generate script and visual storyboard', 'Produce video with AI tools and publish'],
+        meta: 'Last used: 2h ago • 3 steps',
+      },
+      {
+        id: 'market-research',
+        name: 'Market Opportunity Research',
+        description: 'Deep-dive market analysis including competitors, TAM, and positioning.',
+        steps: ['Define target market and keywords', 'Scrape competitor data and pricing', 'Analyze TAM/SAM/SOM', 'Generate SWOT analysis', 'Compile final report'],
+        meta: 'Last used: Yesterday • 5 steps',
+      },
+      {
+        id: 'insta-promo',
+        name: 'Instagram Product Promo',
+        description: 'Create and schedule Instagram promotional content for a product launch.',
+        steps: ['Design carousel images with AI', 'Write captions and hashtags'],
+        meta: 'Last used: 3 days ago • 2 steps',
+      },
     ]
+    fs.writeFileSync(p, JSON.stringify(defaults, null, 2))
+    return defaults
+  },
+
+  _saveTemplates(templates) {
+    const p = path.join(OPENCLAW_DIR, 'workflow-templates.json')
+    fs.writeFileSync(p, JSON.stringify(templates, null, 2))
+  },
+
+  _loadRuns() {
+    if (fs.existsSync(WORKFLOW_RUNS_PATH)) {
+      try { return JSON.parse(fs.readFileSync(WORKFLOW_RUNS_PATH, 'utf8')) } catch { return [] }
+    }
+    return []
+  },
+  _saveRuns(runs) {
+    fs.writeFileSync(WORKFLOW_RUNS_PATH, JSON.stringify(runs, null, 2))
+  },
+  _loadLogs(runId) {
+    const p = path.join(WORKFLOW_LOGS_DIR, `${runId}.json`)
+    if (fs.existsSync(p)) {
+      try { return JSON.parse(fs.readFileSync(p, 'utf8')) } catch { return [] }
+    }
+    return []
+  },
+  _appendLog(runId, level, msg) {
+    if (!fs.existsSync(WORKFLOW_LOGS_DIR)) fs.mkdirSync(WORKFLOW_LOGS_DIR, { recursive: true })
+    const p = path.join(WORKFLOW_LOGS_DIR, `${runId}.json`)
+    const logs = this._loadLogs(runId)
+    logs.push({ ts: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }), level, msg })
+    fs.writeFileSync(p, JSON.stringify(logs, null, 2))
   },
 
   workflow_template_get({ id }) {
@@ -4183,6 +4238,7 @@ const handlers = {
       createdAt: new Date().toISOString(),
     }
     templates.push(newTemplate)
+    this._saveTemplates(templates)
     return newTemplate
   },
 
@@ -4197,6 +4253,7 @@ const handlers = {
       steps: steps ?? templates[idx].steps,
       meta: `Updated just now • ${(steps || templates[idx].steps || []).length} steps`,
     }
+    this._saveTemplates(templates)
     return templates[idx]
   },
 
@@ -4205,65 +4262,89 @@ const handlers = {
     const idx = templates.findIndex(t => t.id === id)
     if (idx < 0) throw new Error('Template not found')
     templates.splice(idx, 1)
+    this._saveTemplates(templates)
     return true
   },
 
   workflow_run_list({ status }) {
-    const all = [
-      { id: 'run-1', templateId: 'tiktok-viral', title: 'Generate 10 Viral Hooks', status: 'running', progress: 65, time: '15:05', meta: 'Product: AI Prompt Bible', steps: 3, currentStep: 2 },
-      { id: 'run-2', templateId: 'market-research', title: 'Daily Cashflow Report', status: 'completed', progress: 100, time: '14:40', meta: 'Status: Success', steps: 5, currentStep: 5 },
-      { id: 'run-3', templateId: 'insta-promo', title: 'YouTube Video Upload', status: 'failed', progress: 45, time: '12:30', meta: 'Error: API Timeout', steps: 4, currentStep: 2 },
-      { id: 'run-4', templateId: 'tiktok-viral', title: 'Reels for Product Launch', status: 'waiting', progress: 0, time: '16:00', meta: 'Scheduled: 16:00', steps: 3, currentStep: 0 },
-      { id: 'run-5', templateId: 'market-research', title: 'Competitor Analysis', status: 'paused', progress: 30, time: '11:20', meta: 'Paused by user', steps: 5, currentStep: 2 },
-    ]
-    if (status) return all.filter(r => r.status === status)
-    return all
+    const runs = this._loadRuns()
+    if (status) return runs.filter(r => r.status === status)
+    return runs
   },
 
   workflow_run_start({ templateId, title }) {
-    return {
-      id: 'run-' + Date.now(),
+    const template = this.workflow_template_get({ id: templateId })
+    const id = 'run-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7)
+    const run = {
+      id,
       templateId,
-      title: title || 'New Workflow Run',
+      title: title || (template ? template.name : 'Unnamed Run'),
       status: 'running',
       progress: 0,
-      time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-      meta: 'Starting...',
-      steps: 3,
-      currentStep: 1,
+      stepCount: template && template.steps ? template.steps.length : 0,
       startedAt: new Date().toISOString(),
+      meta: 'Started'
     }
+    const runs = this._loadRuns()
+    runs.push(run)
+    this._saveRuns(runs)
+    this._appendLog(id, 'info', 'Workflow started')
+    if (template && template.steps && template.steps.length) {
+      this._appendLog(id, 'info', `Loaded ${template.steps.length} steps from template "${template.name}"`)
+    }
+    this._invalidateCache('workflow_run_list')
+    return run
   },
 
   workflow_run_stop({ id }) {
-    return { id, status: 'stopped', progress: 0, meta: 'Stopped by user' }
+    const runs = this._loadRuns()
+    const run = runs.find(r => r.id === id)
+    if (run) {
+      run.status = 'stopped'
+      run.progress = run.progress || 0
+      run.stoppedAt = new Date().toISOString()
+      run.meta = 'Stopped by user'
+      this._saveRuns(runs)
+      this._appendLog(id, 'warn', 'Workflow stopped by user')
+      this._invalidateCache('workflow_run_list')
+    }
+    return run || { id, status: 'stopped', progress: 0, meta: 'Not found' }
   },
 
   workflow_run_pause({ id }) {
-    return { id, status: 'paused', meta: 'Paused by user' }
+    const runs = this._loadRuns()
+    const run = runs.find(r => r.id === id)
+    if (run) {
+      run.status = 'paused'
+      run.pausedAt = new Date().toISOString()
+      run.meta = 'Paused'
+      this._saveRuns(runs)
+      this._appendLog(id, 'info', 'Workflow paused')
+      this._invalidateCache('workflow_run_list')
+    }
+    return run || { id, status: 'paused', meta: 'Not found' }
   },
 
   workflow_run_resume({ id }) {
-    return { id, status: 'running', meta: 'Resumed' }
+    const runs = this._loadRuns()
+    const run = runs.find(r => r.id === id)
+    if (run) {
+      run.status = 'running'
+      run.meta = 'Resumed'
+      this._saveRuns(runs)
+      this._appendLog(id, 'info', 'Workflow resumed')
+      this._invalidateCache('workflow_run_list')
+    }
+    return run || { id, status: 'running', meta: 'Not found' }
   },
 
   workflow_run_get({ id }) {
-    const all = this.workflow_run_list({})
-    const r = all.find(r => r.id === id)
-    if (!r) throw new Error('Run not found')
-    return r
+    const runs = this._loadRuns()
+    return runs.find(r => r.id === id) || null
   },
 
   workflow_log_list({ runId }) {
-    return [
-      { ts: '16:00:01', level: 'info', msg: 'Workflow started' },
-      { ts: '16:00:02', level: 'info', msg: 'Loading template configuration' },
-      { ts: '16:00:05', level: 'info', msg: 'Step 1/3: Generating content ideas' },
-      { ts: '16:00:12', level: 'success', msg: 'Step 1 complete: 15 ideas generated' },
-      { ts: '16:00:13', level: 'info', msg: 'Step 2/3: Creating video script' },
-      { ts: '16:00:25', level: 'success', msg: 'Step 2 complete: Script finalized' },
-      { ts: '16:00:26', level: 'info', msg: 'Step 3/3: Rendering final output' },
-    ]
+    return this._loadLogs(runId)
   },
 }
 

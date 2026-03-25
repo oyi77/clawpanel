@@ -26,24 +26,24 @@ export async function render() {
       </div>
     </div>
 
-    <div class="grid-layout" style="display: grid; grid-template-columns: 2fr 1fr; gap: 20px;">
-       <div class="main-column space-y-6">
+    <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 20px;">
+       <div style="display: flex; flex-direction: column; gap: var(--space-xl);">
           <!-- AI Settings -->
           <div class="settings-card">
             <div class="settings-title">${t('Workflow AI Settings')}</div>
             <div class="settings-desc">${t('Workflow AI Desc')}</div>
 
-            <div class="grid grid-cols-2 gap-4 mt-6">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-md); margin-top: var(--space-xl);">
               <div class="form-group">
                 <label class="form-label">${t('Enable Workflow Interception')}</label>
-                <select class="form-select w-full" id="setting-enabled" style="width: 100%">
+                <select class="form-select" id="setting-enabled" style="width: 100%;">
                   <option value="true">ON</option>
                   <option value="false">OFF</option>
                 </select>
               </div>
               <div class="form-group">
                 <label class="form-label">${t('Workflow Model')}</label>
-                <select class="form-select w-full" id="setting-model" style="width: 100%">
+                <select class="form-select" id="setting-model" style="width: 100%;">
                   <option value="">Default (GPT-4o)</option>
                   <option value="claude-3-5-sonnet">Claude 3.5 Sonnet</option>
                   <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
@@ -51,49 +51,49 @@ export async function render() {
               </div>
               <div class="form-group">
                 <label class="form-label">${t('Approval Level')}</label>
-                <select class="form-select w-full" id="setting-approval" style="width: 100%">
+                <select class="form-select" id="setting-approval" style="width: 100%;">
                   <option value="1">Level 1 (Direct)</option>
                   <option value="2">Level 2 (Confirm Actions)</option>
                   <option value="3">Level 3 (Strict Approval)</option>
                 </select>
               </div>
-              <div class="form-group" style="padding-top: 10px">
-                <label class="flex items-center gap-2 cursor-pointer">
+              <div class="form-group" style="padding-top: 10px;">
+                <label style="display: flex; align-items: center; gap: var(--space-sm); cursor: pointer;">
                     <input type="checkbox" id="setting-auto-create">
-                    <span class="text-sm">${t('Auto-create matching instances')}</span>
+                    <span style="font-size: var(--font-size-sm);">${t('Auto-create matching instances')}</span>
                 </label>
-                <label class="flex items-center gap-2 mt-2 cursor-pointer">
+                <label style="display: flex; align-items: center; gap: var(--space-sm); margin-top: var(--space-sm); cursor: pointer;">
                     <input type="checkbox" id="setting-push-progress">
-                    <span class="text-sm">${t('Sync progress to center')}</span>
+                    <span style="font-size: var(--font-size-sm);">${t('Sync progress to center')}</span>
                 </label>
               </div>
             </div>
 
-            <div class="mt-6 flex justify-end">
+            <div style="margin-top: var(--space-xl); display: flex; justify-content: flex-end;">
                <button class="btn btn-primary btn-sm" id="btn-save-settings">${t('Save Settings')}</button>
             </div>
           </div>
 
           <!-- Templates -->
           <div class="settings-card">
-            <div class="flex items-center justify-between mb-4">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-md);">
               <div>
                 <div class="settings-title">${t('Templates')}</div>
                 <div class="settings-desc">Available automation patterns</div>
               </div>
             </div>
-            <div class="space-y-3" id="template-list-container">
-               <div class="loading text-center py-4 opacity-50">${t('Loading...')}</div>
+            <div id="template-list-container" style="display: flex; flex-direction: column; gap: var(--space-sm);">
+               <div class="loading" style="text-align: center; padding: var(--space-md) 0; opacity: 0.5;">${t('Loading...')}</div>
             </div>
           </div>
        </div>
 
-       <div class="side-column">
+       <div>
           <!-- Runs -->
-          <div class="settings-card h-full">
-            <div class="flex items-center justify-between mb-4">
+          <div class="settings-card" style="height: 100%;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-md);">
               <div class="settings-title">${t('Runs')}</div>
-              <select class="form-select text-xs" id="filter-runs">
+              <select class="form-select" id="filter-runs" style="font-size: var(--font-size-xs);">
                 <option value="">${t('All Status')}</option>
                 <option value="running">${t('Running')}</option>
                 <option value="completed">${t('Completed')}</option>
@@ -102,8 +102,8 @@ export async function render() {
                 <option value="paused">${t('Pause')}</option>
               </select>
             </div>
-            <div id="runs-list-container" class="space-y-3">
-               <div class="loading text-center py-4 opacity-50">${t('Loading...')}</div>
+            <div id="runs-list-container" style="display: flex; flex-direction: column; gap: var(--space-sm);">
+               <div class="loading" style="text-align: center; padding: var(--space-md) 0; opacity: 0.5;">${t('Loading...')}</div>
             </div>
           </div>
        </div>
@@ -147,8 +147,8 @@ export async function render() {
         </div>
         <div class="modal-body">
           <div id="run-detail-body"></div>
-          <div class="mt-4">
-            <div class="settings-title mb-2">${t('workflow_runLog')}</div>
+          <div style="margin-top: var(--space-md);">
+            <div class="settings-title" style="margin-bottom: var(--space-sm);">${t('workflow_runLog')}</div>
             <div id="run-log-body" class="run-log-container"></div>
           </div>
         </div>
@@ -171,7 +171,7 @@ export async function render() {
         <div class="modal-body">
           <div class="form-group">
             <label class="form-label">Template</label>
-            <select class="form-select w-full" id="run-new-template"></select>
+            <select class="form-select" id="run-new-template" style="width: 100%;"></select>
           </div>
           <div class="form-group">
             <label class="form-label">Run Title</label>
@@ -310,7 +310,7 @@ async function loadSettings(page) {
       page.querySelector('#setting-auto-create').checked = !!settings.autoCreate
       page.querySelector('#setting-push-progress').checked = !!settings.pushProgress
     }
-  } catch {}
+  } catch (e) { console.warn('[workflow] loadSettings failed:', e) }
 }
 
 async function loadTemplates(page) {
@@ -318,7 +318,7 @@ async function loadTemplates(page) {
   try {
     const templates = await api.workflowTemplateList()
     if (!templates || templates.length === 0) {
-      container.innerHTML = `<div class="empty-state text-center py-8 text-muted-foreground italic">${t('workflow_noWorkflows')}</div>`
+      container.innerHTML = `<div class="empty-state" style="text-align: center; padding: var(--space-xl) 0; color: var(--text-tertiary); font-style: italic;">${t('workflow_noWorkflows')}</div>`
       return
     }
     container.innerHTML = templates.map(tmpl => `
@@ -327,7 +327,7 @@ async function loadTemplates(page) {
           <div class="template-name">${tmpl.name}</div>
           <div class="template-meta">${tmpl.meta || ''}</div>
         </div>
-        <div class="flex items-center gap-2">
+        <div style="display: flex; align-items: center; gap: var(--space-sm);">
           <button class="btn btn-ghost btn-sm tmpl-run-btn" data-id="${tmpl.id}" data-name="${tmpl.name}" title="${t('workflow_start')}">${icon('play', 14)}</button>
           <button class="btn btn-ghost btn-sm tmpl-edit-btn" data-id="${tmpl.id}" title="${t('Edit')}">${icon('edit', 14)}</button>
         </div>
@@ -345,22 +345,22 @@ async function loadRuns(page) {
   try {
     const runs = await api.workflowRunList(_filterRuns || null)
     if (!runs || runs.length === 0) {
-      container.innerHTML = `<div class="empty-state text-center py-8 text-muted-foreground italic">No runs found</div>`
+      container.innerHTML = `<div class="empty-state" style="text-align: center; padding: var(--space-xl) 0; color: var(--text-tertiary); font-style: italic;">No runs found</div>`
       return
     }
     container.innerHTML = runs.map(r => `
-      <div class="run-item cursor-pointer" data-id="${r.id}">
+      <div class="run-item" style="cursor: pointer;" data-id="${r.id}">
         <div class="run-header">
           <span class="run-badge ${r.status}">${r.status}</span>
-          <span class="run-time text-xs text-muted-foreground">${r.time}</span>
+          <span class="run-time">${r.time}</span>
         </div>
-        <div class="run-title text-sm font-medium">${r.title}</div>
-        <div class="run-time text-xs text-muted-foreground">${r.meta || ''}</div>
+        <div class="run-title">${r.title}</div>
+        <div class="run-time">${r.meta || ''}</div>
         ${r.status !== 'completed' && r.status !== 'failed' && r.status !== 'stopped' ? `
-          <div class="run-progress-bg mt-2">
+          <div class="run-progress-bg">
             <div class="run-progress-fill" style="width: ${r.progress}%"></div>
           </div>
-          <div class="text-xs text-muted-foreground mt-1">${r.progress}% ${r.currentStep ? `· Step ${r.currentStep}/${r.steps}` : ''}</div>
+          <div style="font-size: var(--font-size-xs); color: var(--text-tertiary); margin-top: 4px;">${r.progress}% ${r.currentStep ? `· Step ${r.currentStep}/${r.steps}` : ''}</div>
         ` : ''}
       </div>
     `).join('')
@@ -427,24 +427,32 @@ async function deleteTemplate(page) {
   }
 }
 
+function logLevelStyle(level) {
+  const base = 'padding: 1px 6px; border-radius: var(--radius-md); font-size: 10px; font-family: var(--font-mono);'
+  if (level === 'info') return base + ' background: rgba(37,99,235,0.1); color: #3b82f6;'
+  if (level === 'success') return base + ' background: rgba(34,197,94,0.1); color: var(--success);'
+  if (level === 'error') return base + ' background: rgba(239,68,68,0.1); color: var(--error);'
+  return base + ' background: rgba(234,179,8,0.1); color: var(--warning);'
+}
+
 async function openRunDetail(page, id) {
   try {
     const run = await api.workflowRunGet(id)
     _selectedRun = run
     page.querySelector('#run-modal-title').textContent = run.title
     page.querySelector('#run-detail-body').innerHTML = `
-      <div class="flex items-center gap-3 mb-4">
+      <div style="display: flex; align-items: center; gap: var(--space-sm); margin-bottom: var(--space-md);">
         <span class="run-badge ${run.status}">${run.status}</span>
-        <span class="text-sm text-muted-foreground">${run.time}</span>
-        <span class="text-sm text-muted-foreground">${run.meta || ''}</span>
+        <span style="font-size: var(--font-size-sm); color: var(--text-tertiary);">${run.time}</span>
+        <span style="font-size: var(--font-size-sm); color: var(--text-tertiary);">${run.meta || ''}</span>
       </div>
       ${run.steps ? `
-        <div class="mb-3">
-          <div class="text-xs text-muted-foreground mb-1">Progress</div>
-          <div class="run-progress-bg">
+        <div style="margin-bottom: var(--space-sm);">
+          <div style="font-size: var(--font-size-xs); color: var(--text-tertiary); margin-bottom: 4px;">Progress</div>
+          <div class="run-progress-bg" style="position: relative;">
             <div class="run-progress-fill" style="width: ${run.progress}%"></div>
           </div>
-          <div class="text-xs mt-1">${run.progress}%${run.currentStep ? ` · Step ${run.currentStep}/${run.steps}` : ''}</div>
+          <div style="font-size: var(--font-size-xs); margin-top: 4px;">${run.progress}%${run.currentStep ? ` · Step ${run.currentStep}/${run.steps}` : ''}</div>
         </div>
       ` : ''}
     `
@@ -469,14 +477,14 @@ async function openRunDetail(page, id) {
     try {
       const logs = await api.workflowLogList(run.id)
       logBody.innerHTML = logs.map(l => `
-        <div class="flex gap-2 text-xs py-1 border-b border-border last:border-b-0">
-          <span class="text-muted-foreground shrink-0">${l.ts}</span>
-          <span class="px-1.5 rounded text-[10px] font-mono ${l.level === 'info' ? 'bg-blue-500/10 text-blue-500' : l.level === 'success' ? 'bg-emerald-500/10 text-emerald-500' : l.level === 'error' ? 'bg-red-500/10 text-red-500' : 'bg-yellow-500/10 text-yellow-500'}">${l.level}</span>
-          <span class="text-muted-foreground">${l.msg}</span>
+        <div style="display: flex; gap: var(--space-sm); font-size: var(--font-size-xs); padding: 4px 0; border-bottom: 1px solid var(--border-primary);">
+          <span style="color: var(--text-tertiary); flex-shrink: 0;">${l.ts}</span>
+          <span style="${logLevelStyle(l.level)}">${l.level}</span>
+          <span style="color: var(--text-tertiary);">${l.msg}</span>
         </div>
       `).join('')
     } catch {
-      logBody.innerHTML = `<div class="text-xs text-muted-foreground">${t('workflow_noLogs')}</div>`
+      logBody.innerHTML = `<div style="font-size: var(--font-size-xs); color: var(--text-tertiary);">${t('workflow_noLogs')}</div>`
     }
 
     page.querySelector('#run-modal').style.display = 'flex'
