@@ -306,9 +306,8 @@ fn get_configured_registry() -> String {
         .unwrap_or_else(|| DEFAULT_REGISTRY.to_string())
 }
 
-/// 创建使用配置源的 npm Command
+/// 创建使用配置源的 npm Command（不带提权，用于 npm list 等只读操作）
 /// Windows 上 npm 是 npm.cmd，需要通过 cmd /c 调用，并隐藏窗口
-/// Linux 非 root 用户全局安装需要 sudo
 fn npm_command() -> Command {
     let registry = get_configured_registry();
     #[cfg(target_os = "windows")]
@@ -321,7 +320,7 @@ fn npm_command() -> Command {
         cmd.creation_flags(CREATE_NO_WINDOW);
         cmd
     }
-    #[cfg(target_os = "macos")]
+    #[cfg(not(target_os = "windows"))]
     {
         let mut cmd = Command::new("npm");
         cmd.args(["--registry", &registry]);
@@ -329,17 +328,90 @@ fn npm_command() -> Command {
         crate::commands::apply_proxy_env(&mut cmd);
         cmd
     }
+}
+
+/// Linux: 检测 npm 全局目录是否在用户 home 下（nvm/fnm/volta 等不需要提权）
+#[cfg(target_os = "linux")]
+fn npm_prefix_is_user_writable() -> bool {
+    if nix_is_root() {
+        return true;
+    }
+    let home = std::env::var("HOME").unwrap_or_default();
+    if home.is_empty() {
+        return false;
+    }
+    if let Ok(o) = Command::new("npm")
+        .args(["config", "get", "prefix"])
+        .env("PATH", super::enhanced_path())
+        .output()
+    {
+        if o.status.success() {
+            let prefix = String::from_utf8_lossy(&o.stdout).trim().to_string();
+            if !prefix.is_empty() && prefix.starts_with(&home) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Linux: 收集需要透传给提权子进程的环境变量
+#[cfg(target_os = "linux")]
+fn collect_elevated_env_args() -> Vec<String> {
+    let mut env_args = vec![format!("PATH={}", super::enhanced_path())];
+    if let Ok(home) = std::env::var("HOME") {
+        env_args.push(format!("HOME={home}"));
+    }
+    if let Some(proxy) = crate::commands::configured_proxy_url() {
+        env_args.push(format!("HTTP_PROXY={proxy}"));
+        env_args.push(format!("HTTPS_PROXY={proxy}"));
+        env_args.push(format!("http_proxy={proxy}"));
+        env_args.push(format!("https_proxy={proxy}"));
+        env_args.push("NO_PROXY=localhost,127.0.0.1,::1".to_string());
+        env_args.push("no_proxy=localhost,127.0.0.1,::1".to_string());
+    }
+    env_args
+}
+
+/// 创建需要全局写入权限的 npm Command（用于 install -g / uninstall -g）
+/// Linux 非 root 用户：先检测 npm prefix 是否在用户 home 下（nvm/fnm/volta），
+/// 不需要提权则直接调用；否则优先使用 pkexec（图形密码对话框），
+/// 降级到 sudo（不再使用 -E，改用 env 显式传递变量）。
+fn npm_command_elevated() -> Command {
+    #[cfg(not(target_os = "linux"))]
+    {
+        npm_command()
+    }
     #[cfg(target_os = "linux")]
     {
-        // Linux 非 root 用户全局 npm install 需要 sudo
-        let need_sudo = !nix_is_root();
-        let mut cmd = if need_sudo {
-            let mut c = Command::new("sudo");
-            c.args(["-E", "npm", "--registry", &registry]);
+        if nix_is_root() || npm_prefix_is_user_writable() {
+            return npm_command();
+        }
+        let registry = get_configured_registry();
+        let env_args = collect_elevated_env_args();
+        // 优先 pkexec：图形密码对话框，适合桌面 GUI 应用
+        let has_pkexec = Command::new("which")
+            .arg("pkexec")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+        let mut cmd = if has_pkexec {
+            let mut c = Command::new("pkexec");
+            c.arg("/usr/bin/env");
+            for ea in &env_args {
+                c.arg(ea);
+            }
+            c.args(["npm", "--registry", &registry]);
             c
         } else {
-            let mut c = Command::new("npm");
-            c.args(["--registry", &registry]);
+            // 降级到 sudo：不再用 -E（sudo-rs 不支持），通过 env 显式传递
+            let mut c = Command::new("sudo");
+            c.arg("--non-interactive");
+            c.arg("/usr/bin/env");
+            for ea in &env_args {
+                c.arg(ea);
+            }
+            c.args(["npm", "--registry", &registry]);
             c
         };
         cmd.env("PATH", super::enhanced_path());
@@ -3168,7 +3240,7 @@ async fn try_r2_install(
     if use_tarball {
         // 通用 tarball 模式：npm install -g ./file.tgz（全平台通用，npm 自动处理原生模块）
         let _ = app.emit("upgrade-log", "通用 tarball 模式，执行 npm install...");
-        let mut install_cmd = npm_command();
+        let mut install_cmd = npm_command_elevated();
         install_cmd.args(["install", "-g", &archive_path.to_string_lossy(), "--force"]);
         apply_git_install_env(&mut install_cmd);
         let install_output = install_cmd
@@ -3393,6 +3465,25 @@ async fn upgrade_openclaw_inner(
     pre_install_cleanup();
 
     let _ = app.emit("upgrade-log", format!("$ npm install -g {pkg} --force"));
+    #[cfg(target_os = "linux")]
+    {
+        if !nix_is_root() {
+            if npm_prefix_is_user_writable() {
+                let _ = app.emit("upgrade-log", "npm prefix 在用户目录下，无需提权");
+            } else {
+                let has_pkexec = Command::new("which")
+                    .arg("pkexec")
+                    .output()
+                    .map(|o| o.status.success())
+                    .unwrap_or(false);
+                if has_pkexec {
+                    let _ = app.emit("upgrade-log", "需要管理员权限，将通过 pkexec 弹出认证窗口...");
+                } else {
+                    let _ = app.emit("upgrade-log", "⚠️ 需要管理员权限但 pkexec 不可用，可能需要手动安装");
+                }
+            }
+        }
+    }
     let _ = app.emit("upgrade-progress", 10);
 
     // 汉化版只支持官方源和淘宝源
@@ -3411,7 +3502,7 @@ async fn upgrade_openclaw_inner(
         configured_registry.as_str()
     };
 
-    let mut install_cmd = npm_command();
+    let mut install_cmd = npm_command_elevated();
     install_cmd.args([
         "install",
         "-g",
@@ -3475,7 +3566,7 @@ async fn upgrade_openclaw_inner(
             let _ = app.emit("upgrade-log", "⚠️ 镜像源安装失败，自动切换到官方源重试...");
             let _ = app.emit("upgrade-progress", 15);
             let fallback = "https://registry.npmjs.org";
-            let mut install_cmd2 = npm_command();
+            let mut install_cmd2 = npm_command_elevated();
             install_cmd2.args([
                 "install",
                 "-g",
@@ -3559,7 +3650,7 @@ async fn upgrade_openclaw_inner(
     // 安装成功后再卸载旧包（确保 CLI 始终可用）
     if need_uninstall_old {
         let _ = app.emit("upgrade-log", format!("清理旧版本 ({old_pkg})..."));
-        let _ = npm_command().args(["uninstall", "-g", old_pkg]).output();
+        let _ = npm_command_elevated().args(["uninstall", "-g", old_pkg]).output();
 
         // 清理 standalone 安装目录（不论从 standalone 切走还是切到 standalone，
         // npm 路径已经安装了新 CLI，standalone 残留会干扰源检测）
@@ -3698,7 +3789,7 @@ async fn uninstall_openclaw_inner(
     let _ = app.emit("upgrade-log", format!("$ npm uninstall -g {pkg}"));
     let _ = app.emit("upgrade-progress", 20);
 
-    let mut child = npm_command()
+    let mut child = npm_command_elevated()
         .args(["uninstall", "-g", pkg])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -3742,7 +3833,7 @@ async fn uninstall_openclaw_inner(
         "openclaw"
     };
     let _ = app.emit("upgrade-log", format!("清理 {other_pkg}..."));
-    let _ = npm_command().args(["uninstall", "-g", other_pkg]).output();
+    let _ = npm_command_elevated().args(["uninstall", "-g", other_pkg]).output();
     let _ = app.emit("upgrade-progress", 80);
 
     // 5. 可选：清理配置目录
