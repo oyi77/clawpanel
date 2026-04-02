@@ -5,6 +5,12 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.11.1] - 2026-04-02
+
+### 改进 (Improvements)
+
+- **Windows 双版本安装包** — 新增 Windows 完整包（含 WebView2 离线安装器，~200 MB），适合内网/断网环境；默认安装包恢复为轻量版（~10 MB），Win10 1803+ / Win11 已预装 WebView2 无需额外下载
+
 ## [0.11.0] - 2026-04-02
 
 ### 新功能 (Features)
